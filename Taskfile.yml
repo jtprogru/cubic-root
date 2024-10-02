@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+---
+version: '3'
+
+set:
+  - pipefail
+
+silent: false
+
+vars:
+  URL: "http://localhost:8080/cubic-root"
+  DURATION: "15s"
+  THREADS: "8"
+  CONNECTIONS: "4000"
+  LUA_SCRIPT: "random.lua"
+
+tasks:
+  default:
+    cmd: task --list
+
+  build:bin:
+    desc: Build binary
+    cmd: go build -o bin/cubic-root main.go
+    generates:
+      - bin/cubic-root
+
+  build:docker:
+    desc: Build docker image
+    cmd: docker build -t ghcr.io/jtprog/cubic-root:latest . --build-arg http_port=8080 --build-arg debug_mode=true
+
+  push:docker:
+    desc: Push docker image
+    cmd: docker push ghcr.io/jtprog/cubic-root:latest
+
+  tests:
+    desc: Run all tests
+    cmds:
+      - echo "Running unit tests..."
+      - task: "test:unit"
+      - echo "Running benchmarks..."
+      - task: "test:bench"
+
+  test:unit:
+    desc: Run unit tests
+    cmd: go test -v -timeout 30s ./...
+
+  test:bench:
+    desc: Run benchmarks
+    cmd: go test -bench=. -run=^$ -v
+
+  run:bin:
+    desc: Run binary
+    cmd: "DEBUG=true ./bin/cubic-root"
+    deps:
+      - build:bin
+    env:
+      PORT: 8080
+
+  test:load:
+    desc: "Run load test using wrk with random parameter values"
+    vars:
+      ECHO_DURATION_STRING: "  Duration: {{.DURATION}}"
+      ECHO_THREADS_STRING: "  Threads: {{.THREADS}}"
+      ECHO_CONNECTIONS_STRING: "  Connections: {{.CONNECTIONS}}"
+    silent: true
+    cmds:
+      - echo "Generating Lua script for random parameter generation"
+      - echo "Running wrk with the following parameters:"
+      - echo {{.ECHO_DURATION_STRING}}
+      - echo {{.ECHO_THREADS_STRING}}
+      - echo {{.ECHO_CONNECTIONS_STRING}}
+      - |
+        if ! command -v wrk &> /dev/null; then
+          echo "wrk is not installed. Please install it to use this script."
+          exit 1
+        fi
+      - wrk -t{{.THREADS}} -c{{.CONNECTIONS}} -d{{.DURATION}} -s {{.LUA_SCRIPT}} {{.URL}}
+
