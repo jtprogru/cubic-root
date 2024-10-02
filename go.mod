@@ -2,7 +2,7 @@ module github.com/jtprogru/cubic-root
 
 go 1.23.1
 
-require github.com/prometheus/client_golang v1.11.0
+require github.com/prometheus/client_golang v1.11.1
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
