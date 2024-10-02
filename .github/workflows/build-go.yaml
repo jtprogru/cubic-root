@@ -23,7 +23,7 @@ jobs:
         run: |
           go get .
       - name: Build
-        run: go build -v ./... -o bin/cubic-root
+        run: go build -v -o bin/cubic-root ./...
       - name: Test with Go
         run: go test -json > TestResults-${{ matrix.go-version }}.json
       - name: Upload Go test results
