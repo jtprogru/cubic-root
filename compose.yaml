@@ -1,0 +1,10 @@
+services:
+  cubic-root:
+    image: ghcr.io/jtprog/cubic-root:latest
+    ports:
+      - 8080:8080
+    volumes:
+      - ./config:/etc/cubic-root-config
+    environment:
+      - PORT=8080
+      - DEBUG=true
