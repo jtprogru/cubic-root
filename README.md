@@ -1,5 +1,8 @@
 # cubic-root
 
+[![Go](https://github.com/jtprogru/cubic-root/actions/workflows/build-go.yaml/badge.svg)](https://github.com/jtprogru/cubic-root/actions/workflows/build-go.yaml)
+[![Publish Docker image](https://github.com/jtprogru/cubic-root/actions/workflows/build-docker.yaml/badge.svg)](https://github.com/jtprogru/cubic-root/actions/workflows/build-docker.yaml)
+
 Приложение по мотивам данной задачи: https://jtprog.ru/interview-task-0003/
 
 Приложение докеризовано с использованием multi stage build для Go приложений.
