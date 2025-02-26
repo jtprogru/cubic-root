@@ -9,9 +9,9 @@ silent: false
 
 vars:
   URL: "http://localhost:8080/cubic-root"
-  DURATION: "15s"
-  THREADS: "8"
-  CONNECTIONS: "4000"
+  DURATION: "300s"
+  THREADS: "16"
+  CONNECTIONS: "500"
   LUA_SCRIPT: "random.lua"
 
 tasks:
