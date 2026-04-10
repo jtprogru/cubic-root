@@ -61,8 +61,12 @@ var (
 )
 
 func init() {
+	var err error
 	debugEnv := os.Getenv("DEBUG")
-	debugMode, _ = strconv.ParseBool(debugEnv)
+	debugMode, err = strconv.ParseBool(debugEnv)
+	if err != nil {
+		debugMode = false
+	}
 	// Register new metrics
 	prometheus.MustRegister(requestSize)
 	prometheus.MustRegister(responseSize)
@@ -160,26 +164,26 @@ func calculateCubicRoot(d float64) CubicRootResponse {
 	}
 }
 
-func debugLog(format string, v ...interface{}) {
+func debugLog(format string, v ...any) {
 	if debugMode {
 		log.Printf(format, v...)
 	}
 }
 
-func parseQueryParamsToStruct(values url.Values, target interface{}) error {
+func parseQueryParamsToStruct(values url.Values, target any) error {
 	req, ok := target.(*CubicRootRequest)
 	if !ok {
-		return fmt.Errorf("Target must be of type *CubicRootRequest")
+		return fmt.Errorf("target must be of type *CubicRootRequest")
 	}
 
 	dParam := values.Get("d")
 	if dParam == "" {
-		return fmt.Errorf("Missing parameter 'd'")
+		return fmt.Errorf("missing parameter 'd'")
 	}
 
 	d, err := strconv.ParseFloat(dParam, 64)
 	if err != nil {
-		return fmt.Errorf("Invalid parameter 'd': %v", err)
+		return fmt.Errorf("invalid parameter 'd': %v", err)
 	}
 
 	req.D = d

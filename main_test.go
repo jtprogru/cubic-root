@@ -33,7 +33,7 @@ func TestCubicRootHandler_ValidRequest(t *testing.T) {
 		t.Fatalf("Handler returned empty response")
 	}
 
-	var expected float64 = 3.0000000000000013 // Именно такое страшное число получается если взять кубический корень из 27
+	expected := 3.0000000000000013 // Именно такое страшное число получается если взять кубический корень из 27
 	if resp.Result != expected {
 		t.Errorf("Handler returned unexpected result: got %v, want %v", resp.Result, expected)
 	}
