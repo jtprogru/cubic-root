@@ -24,8 +24,12 @@ jobs:
           go get .
       - name: Build
         run: go build -v -o bin/cubic-root-${{ matrix.go-version }} ./...
+      - name: Vet
+        run: go vet ./...
       - name: Test with Go
-        run: go test -json > TestResults-${{ matrix.go-version }}.json
+        run: go test -json -coverprofile=coverage-${{ matrix.go-version }}.out ./... > TestResults-${{ matrix.go-version }}.json
+      - name: Show coverage
+        run: go tool cover -func=coverage-${{ matrix.go-version }}.out
       - name: Upload Go test results
         uses: actions/upload-artifact@v4
         with:
