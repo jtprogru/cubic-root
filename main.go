@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -85,6 +89,9 @@ func main() {
 		log.Fatalf("Invalid port: %v", err)
 	}
 
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	http.HandleFunc("/cubic-root", cubicRootHandler)
 	http.Handle("/metrics", promhttp.Handler())
 
@@ -94,7 +101,30 @@ func main() {
 	log.Printf("For more information, visit: %s", articleLink)
 	log.Println("To exit, press Ctrl+C")
 
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	server := &http.Server{
+		Addr:         fmt.Sprintf(":%d", port),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Server error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+	log.Println("Server stopped gracefully")
 }
 
 func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
@@ -109,8 +139,10 @@ func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
 		requestDuration.WithLabelValues(status).Observe(duration)
 	}()
 
-	// Measure request size
-	requestSize.Observe(float64(r.ContentLength))
+	// Measure request size (ContentLength is -1 when unknown)
+	if r.ContentLength >= 0 {
+		requestSize.Observe(float64(r.ContentLength))
+	}
 
 	var req CubicRootRequest
 	if err := parseQueryParamsToStruct(r.URL.Query(), &req); err != nil {
