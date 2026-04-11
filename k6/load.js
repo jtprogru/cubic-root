@@ -7,16 +7,16 @@ const cubicRootDuration = new Trend('cubic_root_duration', true);
 
 export const options = {
   stages: [
-    { duration: '30s', target: 50 },   // разгон
-    { duration: '240s', target: 500 }, // нагрузка
+    { duration: '30s', target: 500 },   // разгон
+    { duration: '240s', target: 1500 }, // нагрузка
     { duration: '30s', target: 0 },    // спад
   ],
 
   thresholds: {
     http_req_failed:      ['rate<0.01'],  // < 1% ошибок
-    http_req_duration:    ['p(95)<200'],  // 95-й перцентиль < 200ms
+    http_req_duration:    ['p(95)<100'],  // 95-й перцентиль < 100ms
     errors:               ['rate<0.01'],
-    cubic_root_duration:  ['p(99)<500'],
+    cubic_root_duration:  ['p(99)<200'],
   },
 };
 
@@ -44,7 +44,7 @@ export default function () {
   errorRate.add(!ok);
   cubicRootDuration.add(res.timings.duration);
 
-  sleep(Math.random() * 0.1); // случайная пауза до 100ms между запросами
+  sleep(Math.random() * 0.05); // случайная пауза до 50ms между запросами
 }
 
 export function handleSummary(data) {

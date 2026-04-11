@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://taskfile.dev/schema.json
 ---
-version: '3'
+version: "3"
 
 set:
   - pipefail
@@ -66,12 +66,11 @@ tasks:
       - k6 run --env BASE_URL={{.BASE_URL}} {{.K6_SCRIPT}}
 
   test:load:smoke:
-    desc: "Smoke test: 1 VU, 10s — быстрая проверка что сервис отвечает"
+    desc: "Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает"
     cmds:
       - |
         if ! command -v k6 &> /dev/null; then
           echo "k6 is not installed: brew install k6"
           exit 1
         fi
-      - k6 run --vus 1 --duration 10s --env BASE_URL={{.BASE_URL}} {{.K6_SCRIPT}}
-
+      - k6 run --vus 10 --duration 10s --env BASE_URL={{.BASE_URL}} {{.K6_SCRIPT}}
