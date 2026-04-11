@@ -67,7 +67,7 @@ func TestCubicRootHandler_Zero(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("Handler returned wrong status code: got %v, want %v", status, http.StatusBadRequest)
+		t.Errorf("Handler returned wrong status code: got %v, want %v", status, http.StatusOK)
 	}
 }
 
@@ -140,8 +140,8 @@ func BenchmarkCubicRootHandler(b *testing.B) {
 	b.ResetTimer()
 
 	// Запускаем бенчмарк
-	w := httptest.NewRecorder()
 	for i := 0; i < b.N; i++ {
+		w := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", fmt.Sprintf("/cubic-root?d=%f", values[i]), nil)
 		cubicRootHandler(w, req)
 	}
