@@ -8,11 +8,10 @@ set:
 silent: false
 
 vars:
-  URL: "http://localhost:8080/cubic-root"
-  DURATION: "300s"
-  THREADS: "16"
-  CONNECTIONS: "500"
-  LUA_SCRIPT: "random.lua"
+  BASE_URL: "http://localhost:8080"
+  K6_SCRIPT: "k6/load.js"
+  K6_VUS: "50"
+  K6_DURATION: "30s"
 
 tasks:
   default:
@@ -57,22 +56,22 @@ tasks:
       PORT: 8080
 
   test:load:
-    desc: "Run load test using wrk with random parameter values"
-    vars:
-      ECHO_DURATION_STRING: "  Duration: {{.DURATION}}"
-      ECHO_THREADS_STRING: "  Threads: {{.THREADS}}"
-      ECHO_CONNECTIONS_STRING: "  Connections: {{.CONNECTIONS}}"
-    silent: true
+    desc: "Run load test using k6 (stages: ramp-up 30s → load 240s → ramp-down 30s)"
     cmds:
-      - echo "Generating Lua script for random parameter generation"
-      - echo "Running wrk with the following parameters:"
-      - echo {{.ECHO_DURATION_STRING}}
-      - echo {{.ECHO_THREADS_STRING}}
-      - echo {{.ECHO_CONNECTIONS_STRING}}
       - |
-        if ! command -v wrk &> /dev/null; then
-          echo "wrk is not installed. Please install it to use this script."
+        if ! command -v k6 &> /dev/null; then
+          echo "k6 is not installed: brew install k6"
           exit 1
         fi
-      - wrk -t{{.THREADS}} -c{{.CONNECTIONS}} -d{{.DURATION}} -s {{.LUA_SCRIPT}} {{.URL}}
+      - k6 run --env BASE_URL={{.BASE_URL}} {{.K6_SCRIPT}}
+
+  test:load:smoke:
+    desc: "Smoke test: 1 VU, 10s — быстрая проверка что сервис отвечает"
+    cmds:
+      - |
+        if ! command -v k6 &> /dev/null; then
+          echo "k6 is not installed: brew install k6"
+          exit 1
+        fi
+      - k6 run --vus 1 --duration 10s --env BASE_URL={{.BASE_URL}} {{.K6_SCRIPT}}
 
