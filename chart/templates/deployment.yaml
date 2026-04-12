@@ -43,6 +43,16 @@ spec:
               {{- else }}
               value: "false"
               {{- end }}
+            {{- if .Values.tracing.otlpEndpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.tracing.otlpEndpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: {{ .Values.tracing.insecure | toString | quote }}
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ .Values.tracing.sampler | quote }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ .Values.tracing.samplerArg | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

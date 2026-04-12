@@ -17,6 +17,18 @@ image:
 config:
   debug: false
 
+# Distributed tracing configuration (OpenTelemetry).
+tracing:
+  # OTLP endpoint for sending traces (e.g. http://otel-collector:4318).
+  # Leave empty to disable tracing.
+  otlpEndpoint: ""
+  # Use insecure (non-TLS) connection to the OTLP endpoint.
+  insecure: false
+  # Sampler type: always_on, always_off, traceidratio, parentbased_always_on, parentbased_traceidratio
+  sampler: "traceidratio"
+  # Sampling ratio (used with traceidratio sampler). 0.1 = 10%
+  samplerArg: "0.1"
+
 # This is for the secretes for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
 # This is to override the chart name.
