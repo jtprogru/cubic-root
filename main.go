@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -15,9 +15,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -46,14 +54,14 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "cubic_root_request_size_bytes",
 			Help:    "Histogram of request sizes in bytes.",
-			Buckets: prometheus.ExponentialBuckets(10, 2, 10), // Example buckets from 10B to ~50KB
+			Buckets: prometheus.ExponentialBuckets(10, 2, 10),
 		},
 	)
 	responseSize = prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "cubic_root_response_size_bytes",
 			Help:    "Histogram of response sizes in bytes.",
-			Buckets: prometheus.ExponentialBuckets(10, 2, 10), // Example buckets from 10B to ~50KB
+			Buckets: prometheus.ExponentialBuckets(10, 2, 10),
 		},
 	)
 	activeRequests = prometheus.NewGauge(
@@ -71,7 +79,15 @@ func init() {
 	if err != nil {
 		debugMode = false
 	}
-	// Register new metrics
+
+	level := slog.LevelInfo
+	if debugMode {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	})))
+
 	prometheus.MustRegister(requestSize)
 	prometheus.MustRegister(responseSize)
 	prometheus.MustRegister(activeRequests)
@@ -79,30 +95,88 @@ func init() {
 	prometheus.MustRegister(requestDuration)
 }
 
+// traceAttrs extracts trace_id and span_id from ctx for structured logging.
+func traceAttrs(ctx context.Context) []any {
+	sc := oteltrace.SpanFromContext(ctx).SpanContext()
+	if !sc.IsValid() {
+		return nil
+	}
+	return []any{
+		"trace_id", sc.TraceID().String(),
+		"span_id", sc.SpanID().String(),
+	}
+}
+
+func initTracer(ctx context.Context) (func(), error) {
+	exp, err := otlptracehttp.New(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create OTLP exporter: %w", err)
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exp),
+		sdktrace.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String("cubic-root"),
+			semconv.ServiceVersionKey.String(Version),
+		)),
+	)
+
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
+	return func() {
+		if err := tp.Shutdown(context.Background()); err != nil {
+			slog.Error("tracer provider shutdown", "err", err)
+		}
+	}, nil
+}
+
 func main() {
+	ctx := context.Background()
+
 	portStr := os.Getenv("PORT")
 	if portStr == "" {
 		portStr = "8080"
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		log.Fatalf("Invalid port: %v", err)
+		slog.Error("invalid port", "err", err)
+		os.Exit(1)
 	}
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-	http.HandleFunc("/cubic-root", cubicRootHandler)
-	http.Handle("/metrics", promhttp.Handler())
+	shutdownTracer, err := initTracer(ctx)
+	if err != nil {
+		slog.Warn("tracing disabled", "err", err)
+		shutdownTracer = func() {}
+	}
 
-	log.Printf("Server version %s is running on http://localhost:%d", Version, port)
-	log.Printf("Send requests to http://localhost:%d/cubic-root?d=<value>", port)
-	log.Printf("Debug mode is %t", debugMode)
-	log.Printf("For more information, visit: %s", articleLink)
-	log.Println("To exit, press Ctrl+C")
+	mux := http.NewServeMux()
+	mux.Handle("/health", otelhttp.NewHandler(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		"/health",
+	))
+	mux.Handle("/cubic-root", otelhttp.NewHandler(
+		http.HandlerFunc(cubicRootHandler),
+		"/cubic-root",
+	))
+	mux.Handle("/metrics", promhttp.Handler())
+
+	slog.Info("server starting",
+		"version", Version,
+		"port", port,
+		"debug", debugMode,
+		"article", articleLink,
+	)
 
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
+		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -110,7 +184,8 @@ func main() {
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Server error: %v", err)
+			slog.Error("server error", "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -118,13 +193,17 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	slog.Info("shutting down server")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+
+	shutdownTracer()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server forced to shutdown", "err", err)
+		os.Exit(1)
 	}
-	log.Println("Server stopped gracefully")
+	slog.Info("server stopped gracefully")
 }
 
 func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +218,6 @@ func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
 		requestDuration.WithLabelValues(status).Observe(duration)
 	}()
 
-	// Measure request size (ContentLength is -1 when unknown)
 	if r.ContentLength >= 0 {
 		requestSize.Observe(float64(r.ContentLength))
 	}
@@ -152,17 +230,25 @@ func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	debugLog("Received request: %f", req.D)
+	ctx := r.Context()
+	tracer := otel.Tracer("cubic-root")
+	_, calcSpan := tracer.Start(ctx, "cubeRoot.calculate",
+		oteltrace.WithAttributes(attribute.Float64("input", req.D)),
+	)
 
 	result := calculateCubicRoot(req.D)
 
-	debugLog("Calculated result: %f, message: %s", result.Result, result.Message)
+	calcSpan.SetAttributes(attribute.Float64("result", result.Result))
+	calcSpan.End()
 
-	// Encode response and measure size
+	logArgs := append(traceAttrs(ctx), "d", req.D, "result", result.Result)
+	slog.DebugContext(ctx, "calculated cubic root", logArgs...)
+
 	w.Header().Set("Content-Type", "application/json")
 	responseBytes, err := json.Marshal(result)
 	if err != nil {
-		log.Printf("Error encoding response: %v", err)
+		errArgs := append(traceAttrs(ctx), "err", err)
+		slog.ErrorContext(ctx, "encode response", errArgs...)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		status = "500"
 		requestsTotal.WithLabelValues(status).Inc()
@@ -170,7 +256,6 @@ func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	responseSize.Observe(float64(len(responseBytes)))
-
 	_, _ = w.Write(responseBytes)
 	status = "200"
 	requestsTotal.WithLabelValues(status).Inc()
@@ -186,19 +271,9 @@ type CubicRootResponse struct {
 }
 
 func calculateCubicRoot(d float64) CubicRootResponse {
-	result := cubeRoot(d)
-
-	debugLog("Cubic root of %.6f is %.6f", d, result)
-
 	return CubicRootResponse{
-		Result:  result,
+		Result:  cubeRoot(d),
 		Message: "Done",
-	}
-}
-
-func debugLog(format string, v ...any) {
-	if debugMode {
-		log.Printf(format, v...)
 	}
 }
 
