@@ -8,7 +8,9 @@ const cubicRootDuration = new Trend('cubic_root_duration', true);
 export const options = {
   stages: [
     { duration: '30s', target: 500 },   // разгон
-    { duration: '240s', target: 1500 }, // нагрузка
+    { duration: '30s', target: 1500 }, // нагрузка
+    { duration: '30s', target: 2500 }, // нагрузка
+    { duration: '240s', target: 3500 }, // нагрузка
     { duration: '30s', target: 0 },    // спад
   ],
 
