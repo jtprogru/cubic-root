@@ -74,3 +74,28 @@ tasks:
           exit 1
         fi
       - k6 run --vus 10 --duration 10s --env BASE_URL={{.BASE_URL}} {{.K6_SCRIPT}}
+
+  run:jaeger:
+    desc: "Start Jaeger all-in-one (OTLP HTTP :4318, UI :16686)"
+    cmd: docker compose up jaeger -d
+
+  run:traced:
+    desc: "Run binary with tracing enabled (requires Jaeger: task run:jaeger)"
+    cmd: "DEBUG=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_EXPORTER_OTLP_INSECURE=true ./bin/cubic-root"
+    deps:
+      - build:bin
+    env:
+      PORT: 8080
+
+  obs:up:
+    desc: "Start full observability stack (Jaeger + Prometheus + Grafana)"
+    cmd: docker compose up -d --build
+    summary: |
+      Поднимает все сервисы:
+        Jaeger UI   → http://localhost:16686
+        Prometheus  → http://localhost:9090
+        Grafana     → http://localhost:3000 (анонимный Admin)
+
+  obs:down:
+    desc: "Stop observability stack"
+    cmd: docker compose down
