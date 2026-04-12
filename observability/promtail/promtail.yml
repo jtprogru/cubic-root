@@ -1,0 +1,45 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: cubic-root
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["com.docker.compose.service=cubic-root"]
+    relabel_configs:
+      - source_labels: ["__meta_docker_container_name"]
+        regex: '/(.*)'
+        target_label: container
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: stream
+    pipeline_stages:
+      # Docker wraps each log line: {"log":"<app json>\n","stream":"stdout","time":"..."}
+      # Stage 1: extract the inner log line
+      - json:
+          expressions:
+            output: log
+      # Stage 2: parse the inner app JSON to extract trace context and level
+      - json:
+          expressions:
+            trace_id: trace_id
+            span_id: span_id
+            level: level
+          source: output
+      # Stage 3: promote trace_id / span_id / level to Loki stream labels
+      - labels:
+          trace_id:
+          span_id:
+          level:
+      # Stage 4: replace raw Docker JSON with the actual app log line
+      - output:
+          source: output
