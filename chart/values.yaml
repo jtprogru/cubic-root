@@ -71,6 +71,18 @@ service:
   type: ClusterIP
   # This sets the ports more information can be found here: https://kubernetes.io/docs/concepts/services-networking/service/#field-spec-ports
   port: 8080
+  # Internal port exposing Prometheus /metrics. Kept separate from the public
+  # API port so metrics are not reachable through the Ingress.
+  metricsPort: 9090
+
+# NetworkPolicy restricts who can reach the pod. Disabled by default because it
+# requires a CNI that enforces NetworkPolicy; enable in clusters that support it.
+networkPolicy:
+  enabled: false
+  # Namespace selector labels allowed to scrape the metrics port (e.g. the
+  # monitoring namespace). Empty {} allows the metrics port from any namespace.
+  metricsNamespaceSelector: {}
+    # kubernetes.io/metadata.name: monitoring
 
 # This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
 ingress:

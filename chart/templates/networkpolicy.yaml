@@ -1,0 +1,30 @@
+{{- if .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Public API and health probe — reachable on the http port.
+    - ports:
+        - port: http
+          protocol: TCP
+    # Metrics — only from namespaces matching metricsNamespaceSelector.
+    # An empty selector ({}) allows scraping from any namespace.
+    - from:
+        - namespaceSelector:
+            {{- if .Values.networkPolicy.metricsNamespaceSelector }}
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.metricsNamespaceSelector | nindent 14 }}
+            {{- end }}
+      ports:
+        - port: metrics
+          protocol: TCP
+{{- end }}
