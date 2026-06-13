@@ -37,6 +37,10 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
+            - name: PORT
+              value: {{ .Values.service.port | quote }}
+            - name: METRICS_PORT
+              value: {{ .Values.service.metricsPort | quote }}
             - name: DEBUG
               {{- if .Values.config.debug }}
               value: "true"
@@ -56,6 +60,9 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
               protocol: TCP
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}

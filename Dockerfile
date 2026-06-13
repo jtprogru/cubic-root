@@ -33,7 +33,7 @@ COPY --from=builder /go/bin/cubic-root /cubic-root
 ENV PORT=$PORT
 ENV DEBUG=$DEBUG
 
-EXPOSE 8080
+EXPOSE 8080 9090
 
 USER appuser
 

@@ -138,13 +138,14 @@ func initTracer(ctx context.Context) (func(), error) {
 func main() {
 	ctx := context.Background()
 
-	portStr := os.Getenv("PORT")
-	if portStr == "" {
-		portStr = "8080"
-	}
-	port, err := strconv.Atoi(portStr)
+	port, err := portFromEnv("PORT", 8080)
 	if err != nil {
-		slog.Error("invalid port", "err", err)
+		slog.Error("invalid PORT", "err", err)
+		os.Exit(1)
+	}
+	metricsPort, err := portFromEnv("METRICS_PORT", 9090)
+	if err != nil {
+		slog.Error("invalid METRICS_PORT", "err", err)
 		os.Exit(1)
 	}
 
@@ -154,56 +155,95 @@ func main() {
 		shutdownTracer = func() {}
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/health", otelhttp.NewHandler(
+	// Публичный listener: бизнес-API и health-проба.
+	publicMux := http.NewServeMux()
+	publicMux.Handle("GET /health", otelhttp.NewHandler(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
 		"/health",
 	))
-	mux.Handle("/cubic-root", otelhttp.NewHandler(
+	publicMux.Handle("GET /cubic-root", otelhttp.NewHandler(
 		http.HandlerFunc(cubicRootHandler),
 		"/cubic-root",
 	))
-	mux.Handle("/metrics", promhttp.Handler())
+
+	// Internal listener: метрики Prometheus вынесены на отдельный порт, чтобы
+	// их нельзя было достать через публичный Ingress/сервис.
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("GET /metrics", promhttp.Handler())
 
 	slog.Info("server starting",
 		"version", Version,
 		"port", port,
+		"metricsPort", metricsPort,
 		"debug", debugMode,
 		"article", articleLink,
 	)
 
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		Handler:      mux,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
+	server := newHTTPServer(port, publicMux)
+	metricsServer := newHTTPServer(metricsPort, metricsMux)
 
+	serveErr := make(chan error, 2)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("server error", "err", err)
-			os.Exit(1)
+			serveErr <- fmt.Errorf("public server: %w", err)
+		}
+	}()
+	go func() {
+		if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- fmt.Errorf("metrics server: %w", err)
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	slog.Info("shutting down server")
+	select {
+	case <-quit:
+		slog.Info("shutting down servers")
+	case err := <-serveErr:
+		slog.Error("server error", "err", err)
+		os.Exit(1)
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	shutdownTracer()
 
+	if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("metrics server forced to shutdown", "err", err)
+	}
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server forced to shutdown", "err", err)
 		os.Exit(1)
 	}
 	slog.Info("server stopped gracefully")
+}
+
+// portFromEnv читает порт из переменной окружения name, возвращая def, если
+// переменная не задана.
+func portFromEnv(name string, def int) (int, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
+	}
+	return strconv.Atoi(v)
+}
+
+// newHTTPServer создаёт http.Server с консервативными тайм-аутами и лимитом
+// размера заголовков (защита от Slowloris и раздутых заголовков).
+func newHTTPServer(port int, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           handler,
+		ReadTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 16, // 64 KiB
+	}
 }
 
 func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +332,9 @@ func parseQueryParamsToStruct(values url.Values, target any) error {
 	if err != nil {
 		return fmt.Errorf("invalid parameter 'd': %v", err)
 	}
+	if math.IsNaN(d) || math.IsInf(d, 0) {
+		return fmt.Errorf("parameter 'd' must be a finite number")
+	}
 
 	req.D = d
 	return nil
@@ -302,10 +345,19 @@ func cubeRoot(x float64) float64 {
 		return 0
 	}
 
-	z := x / 3
-	precision := 1e-10
+	const (
+		precision = 1e-10
+		maxIter   = 100
+	)
 
-	for {
+	z := x / 3
+	for i := 0; i < maxIter; i++ {
+		// z может занулиться или уйти в Inf на экстремально малых/больших
+		// входах — в этом случае x/(z*z) даёт Inf/NaN и итерация перестаёт
+		// сходиться. Прерываемся, чтобы цикл всегда завершался.
+		if z == 0 || math.IsInf(z, 0) {
+			break
+		}
 		nextZ := (2*z + x/(z*z)) / 3
 		if math.Abs(nextZ-z) < precision {
 			break

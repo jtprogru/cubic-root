@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
@@ -94,6 +95,58 @@ func TestCubicRootHandler_NegativeNumber(t *testing.T) {
 	expected := -2.0
 	if resp.Result != expected {
 		t.Errorf("Handler returned unexpected result: got %v, want %v", resp.Result, expected)
+	}
+}
+
+// TestCubicRootHandler_NonFinite проверяет, что нечисловые значения d
+// (NaN/Inf) отбрасываются с 400 и не доходят до итерации, которая на них
+// зацикливалась бы.
+func TestCubicRootHandler_NonFinite(t *testing.T) {
+	for _, d := range []string{"NaN", "Inf", "+Inf", "-Inf", "Infinity"} {
+		t.Run(d, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "/cubic-root?d="+d, nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := httptest.NewRecorder()
+			http.HandlerFunc(cubicRootHandler).ServeHTTP(rr, req)
+
+			if status := rr.Code; status != http.StatusBadRequest {
+				t.Errorf("d=%s: got status %v, want %v", d, status, http.StatusBadRequest)
+			}
+		})
+	}
+}
+
+// TestCubicRoot_Terminates гарантирует, что итерация всегда завершается даже
+// на экстремальных конечных входах, на которых раньше был бесконечный цикл
+// (underflow z*z -> 0 -> x/(z*z) = Inf).
+func TestCubicRoot_Terminates(t *testing.T) {
+	for _, d := range []float64{1e-200, 5e-324, 1e308, -1e308, 1e-162} {
+		got := cubeRoot(d)
+		if math.IsNaN(got) {
+			t.Errorf("cubeRoot(%g) returned NaN", d)
+		}
+	}
+}
+
+// TestMethodWhitelist проверяет, что эндпоинт отвечает только на GET, а на
+// прочие методы возвращает 405.
+func TestMethodWhitelist(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.Handle("GET /cubic-root", http.HandlerFunc(cubicRootHandler))
+
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+		t.Run(method, func(t *testing.T) {
+			req := httptest.NewRequest(method, "/cubic-root?d=27", nil)
+			rr := httptest.NewRecorder()
+			mux.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusMethodNotAllowed {
+				t.Errorf("%s: got status %v, want %v", method, rr.Code, http.StatusMethodNotAllowed)
+			}
+		})
 	}
 }
 

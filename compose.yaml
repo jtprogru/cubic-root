@@ -5,6 +5,7 @@ services:
       - "8080:8080"
     environment:
       - PORT=8080
+      - METRICS_PORT=9090
       - DEBUG=true
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318
       - OTEL_EXPORTER_OTLP_INSECURE=true
@@ -81,9 +82,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      # Login required. Override credentials via GRAFANA_ADMIN_USER /
+      # GRAFANA_ADMIN_PASSWORD (e.g. in a local .env file).
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
