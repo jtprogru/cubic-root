@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [ '1.22', '1.23' ]
+        go-version: [ '1.24', '1.25' ]
 
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +26,10 @@ jobs:
         run: go build -v -o bin/cubic-root-${{ matrix.go-version }} ./...
       - name: Vet
         run: go vet ./...
+      - name: Vulnerability scan (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
       - name: Test with Go
         run: go test -json -coverprofile=coverage-${{ matrix.go-version }}.out ./... > TestResults-${{ matrix.go-version }}.json
       - name: Show coverage
