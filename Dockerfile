@@ -30,8 +30,10 @@ RUN chmod +x /docker-entrypoint.sh
 COPY --from=builder /go/bin/cubic-root /cubic-root
 
 # Устанавливаем переменные окружения
-ENV PORT=$PORT
-ENV DEBUG=$DEBUG
+ARG http_port=8080
+ARG debug_mode=false
+ENV PORT=$http_port
+ENV DEBUG=$debug_mode
 
 EXPOSE 8080 9090
 
