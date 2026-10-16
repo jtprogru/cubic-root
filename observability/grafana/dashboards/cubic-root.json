@@ -58,6 +58,18 @@
         "expr": "changes(process_start_time_seconds{job=\"$job\"}[2m]) > 0",
         "titleFormat": "restart / deploy",
         "step": "60s"
+      },
+      {
+        "name": "Fault injection",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "expr": "max(cubic_root_fault_injection_enabled{job=\"$job\"}) == 1",
+        "titleFormat": "fault injection is ON",
+        "step": "60s"
       }
     ]
   },
@@ -1945,11 +1957,157 @@
     {
       "id": 36,
       "type": "row",
-      "title": "Runtime: Go and process",
+      "title": "Experiments: fault injection",
       "collapsed": false,
       "gridPos": {
         "x": 0,
         "y": 63,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Fault injection",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "description": "FAULT_* settings: when ON, errors and latency are injected on purpose.",
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "OFF",
+                  "color": "green"
+                },
+                "1": {
+                  "text": "ON",
+                  "color": "orange"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "max(cubic_root_fault_injection_enabled{job=\"$job\"})",
+          "legendFormat": ""
+        }
+      ],
+      "id": 37,
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 4,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Injected faults",
+      "description": "Injected errors and latency vs all 5xx: what part of the errors is the experiment.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (type) (rate(cubic_root_injected_faults_total{job=\"$job\"}[$__rate_interval]))",
+          "legendFormat": "{{type}}"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code=~\"5..\"}[$__rate_interval]))",
+          "legendFormat": "all 5xx"
+        }
+      ],
+      "id": 38,
+      "gridPos": {
+        "x": 4,
+        "y": 64,
+        "w": 20,
+        "h": 8
+      }
+    },
+    {
+      "id": 39,
+      "type": "row",
+      "title": "Runtime: Go and process",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 72,
         "w": 24,
         "h": 1
       },
@@ -2007,10 +2165,10 @@
           "legendFormat": "GOMAXPROCS"
         }
       ],
-      "id": 37,
+      "id": 40,
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 73,
         "w": 8,
         "h": 8
       }
@@ -2058,10 +2216,10 @@
           "legendFormat": "gc"
         }
       ],
-      "id": 38,
+      "id": 41,
       "gridPos": {
         "x": 8,
-        "y": 64,
+        "y": 73,
         "w": 8,
         "h": 8
       }
@@ -2118,10 +2276,10 @@
           "legendFormat": "p99"
         }
       ],
-      "id": 39,
+      "id": 42,
       "gridPos": {
         "x": 16,
-        "y": 64,
+        "y": 73,
         "w": 8,
         "h": 8
       }
@@ -2187,10 +2345,10 @@
           "legendFormat": "GOMEMLIMIT"
         }
       ],
-      "id": 40,
+      "id": 43,
       "gridPos": {
         "x": 0,
-        "y": 72,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2247,10 +2405,10 @@
           "legendFormat": "threads"
         }
       ],
-      "id": 41,
+      "id": 44,
       "gridPos": {
         "x": 8,
-        "y": 72,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2298,10 +2456,10 @@
           "legendFormat": "wait"
         }
       ],
-      "id": 42,
+      "id": 45,
       "gridPos": {
         "x": 16,
-        "y": 72,
+        "y": 81,
         "w": 8,
         "h": 8
       }
@@ -2341,10 +2499,10 @@
           "legendFormat": "{{version}} ({{revision}})"
         }
       ],
-      "id": 43,
+      "id": 46,
       "gridPos": {
         "x": 0,
-        "y": 80,
+        "y": 89,
         "w": 12,
         "h": 4
       }
@@ -2384,22 +2542,22 @@
           "legendFormat": ""
         }
       ],
-      "id": 44,
+      "id": 47,
       "gridPos": {
         "x": 12,
-        "y": 80,
+        "y": 89,
         "w": 12,
         "h": 4
       }
     },
     {
-      "id": 45,
+      "id": 48,
       "type": "row",
       "title": "Logs and traces",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 84,
+        "y": 93,
         "w": 24,
         "h": 1
       },
@@ -2451,10 +2609,10 @@
           "legendFormat": "{{level}}"
         }
       ],
-      "id": 46,
+      "id": 49,
       "gridPos": {
         "x": 0,
-        "y": 85,
+        "y": 94,
         "w": 12,
         "h": 8
       }
@@ -2486,10 +2644,10 @@
           "limit": 20
         }
       ],
-      "id": 47,
+      "id": 50,
       "gridPos": {
         "x": 12,
-        "y": 85,
+        "y": 94,
         "w": 12,
         "h": 8
       }
@@ -2523,10 +2681,10 @@
           "expr": "{service=\"cubic-root\"}"
         }
       ],
-      "id": 48,
+      "id": 51,
       "gridPos": {
         "x": 0,
-        "y": 93,
+        "y": 102,
         "w": 24,
         "h": 10
       }
