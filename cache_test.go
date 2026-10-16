@@ -30,7 +30,7 @@ func TestCache_HitMiss(t *testing.T) {
 		if got := rr.Header().Get("X-Cache"); got != want[i] {
 			t.Errorf("d=%s: X-Cache=%q, want %q", d, got, want[i])
 		}
-		if resp := decodeResponse(t, rr); resp.Result != 3.0000000000000013 {
+		if resp := decodeResponse(t, rr); resp.Result != 3 {
 			t.Errorf("d=%s: result %v", d, resp.Result)
 		}
 	}
@@ -75,10 +75,10 @@ func TestCache_Disabled(t *testing.T) {
 // TestCache_FailedResultsAreNotCached: результат, которому нельзя доверять,
 // не должен закрепляться в кэше.
 func TestCache_FailedResultsAreNotCached(t *testing.T) {
-	h, _, m := newTestHandler(apiConfig{CacheSize: 10})
+	h, _, m := newTestHandlerWithCalc(apiConfig{CacheSize: 10}, notConverging)
 	for range 2 {
-		if got := get(h, "/cubic-root?d=1e30").Header().Get("X-Cache"); got != "MISS" {
-			t.Errorf("X-Cache=%q, want MISS", got)
+		if rr := get(h, "/cubic-root?d=1e30"); rr.Code != http.StatusInternalServerError {
+			t.Errorf("status %d, want 500", rr.Code)
 		}
 	}
 	if got := testutil.ToFloat64(m.calculations.WithLabelValues(string(outcomeMaxIter))); got != 2 {

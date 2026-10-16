@@ -51,6 +51,9 @@ type api struct {
 	// cache равен nil, если кэш выключен (CACHE_SIZE=0).
 	cache  *cache.LRU[uint64, cubicRootResult]
 	flight singleflight.Group
+	// calc — само вычисление; подменяется в тестах, чтобы проверить ответ на
+	// несошедшееся вычисление.
+	calc func(float64) (float64, calcStats)
 }
 
 // newAPI создаёт обработчики и, если кэш включён, сам кэш. Размер кэша
@@ -60,6 +63,7 @@ func newAPI(cfg apiConfig, m *metrics, reg prometheus.Registerer) *api {
 		cfg:     cfg,
 		metrics: m,
 		tracer:  otel.Tracer("cubic-root"),
+		calc:    cubeRoot,
 	}
 	if cfg.CacheSize > 0 {
 		a.cache = cache.New[uint64, cubicRootResult](cfg.CacheSize, cfg.CacheTTL,
@@ -96,6 +100,11 @@ func (a *api) cubicRoot(w http.ResponseWriter, r *http.Request) {
 
 	res, status := a.result(ctx, d)
 	oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String("cache.status", string(status)))
+	if res.stats.Outcome.failed() {
+		// Неверное число хуже ошибки: клиент не сможет его отличить от верного.
+		http.Error(w, "computation did not converge", http.StatusInternalServerError)
+		return
+	}
 
 	logArgs := append(traceAttrs(ctx),
 		"d", d, "result", res.value,
@@ -162,7 +171,7 @@ func (a *api) compute(ctx context.Context, d float64) cubicRootResult {
 	if delay := a.calcDelay(); delay > 0 {
 		_ = sleep(ctx, delay)
 	}
-	value, stats := cubeRoot(d)
+	value, stats := a.calc(d)
 	span.SetAttributes(
 		attribute.Float64("result", value),
 		attribute.Int("cuberoot.iterations", stats.Iterations),
@@ -175,7 +184,7 @@ func (a *api) compute(ctx context.Context, d float64) cubicRootResult {
 			"d", d, "result", value,
 			"iterations", stats.Iterations, "outcome", stats.Outcome,
 		)
-		slog.WarnContext(ctx, "cubic root did not converge", logArgs...)
+		slog.ErrorContext(ctx, "cubic root did not converge", logArgs...)
 	}
 	return cubicRootResult{value: value, stats: stats}
 }
