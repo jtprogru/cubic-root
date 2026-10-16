@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
-	"math"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"slices"
@@ -21,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -165,9 +161,10 @@ func main() {
 // newPublicHandler собирает публичный listener: бизнес-API и health-пробу,
 // обёрнутые HTTP-метриками.
 func newPublicHandler(m *metrics) http.Handler {
+	a := newAPI(m)
 	routes := map[string]http.Handler{
 		"GET /health":     otelhttp.NewHandler(http.HandlerFunc(healthHandler), "/health"),
-		"GET /cubic-root": otelhttp.NewHandler(http.HandlerFunc(cubicRootHandler), "/cubic-root"),
+		"GET /cubic-root": otelhttp.NewHandler(http.HandlerFunc(a.cubicRoot), "/cubic-root"),
 	}
 	mux := http.NewServeMux()
 	for pattern, h := range routes {
@@ -212,104 +209,4 @@ func newHTTPServer(port int, handler http.Handler) *http.Server {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    1 << 16, // 64 KiB
 	}
-}
-
-func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
-	var req CubicRootRequest
-	if err := parseQueryParamsToStruct(r.URL.Query(), &req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	ctx := r.Context()
-	tracer := otel.Tracer("cubic-root")
-	_, calcSpan := tracer.Start(ctx, "cubeRoot.calculate",
-		oteltrace.WithAttributes(attribute.Float64("input", req.D)),
-	)
-
-	result := calculateCubicRoot(req.D)
-
-	calcSpan.SetAttributes(attribute.Float64("result", result.Result))
-	calcSpan.End()
-
-	logArgs := append(traceAttrs(ctx), "d", req.D, "result", result.Result)
-	slog.DebugContext(ctx, "calculated cubic root", logArgs...)
-
-	w.Header().Set("Content-Type", "application/json")
-	responseBytes, err := json.Marshal(result)
-	if err != nil {
-		errArgs := append(traceAttrs(ctx), "err", err)
-		slog.ErrorContext(ctx, "encode response", errArgs...)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	_, _ = w.Write(responseBytes)
-}
-
-type CubicRootRequest struct {
-	D float64 `json:"d"`
-}
-
-type CubicRootResponse struct {
-	Result  float64 `json:"result"`
-	Message string  `json:"message"`
-}
-
-func calculateCubicRoot(d float64) CubicRootResponse {
-	return CubicRootResponse{
-		Result:  cubeRoot(d),
-		Message: "Done",
-	}
-}
-
-func parseQueryParamsToStruct(values url.Values, target any) error {
-	req, ok := target.(*CubicRootRequest)
-	if !ok {
-		return fmt.Errorf("target must be of type *CubicRootRequest")
-	}
-
-	dParam := values.Get("d")
-	if dParam == "" {
-		return fmt.Errorf("missing parameter 'd'")
-	}
-
-	d, err := strconv.ParseFloat(dParam, 64)
-	if err != nil {
-		return fmt.Errorf("invalid parameter 'd': %v", err)
-	}
-	if math.IsNaN(d) || math.IsInf(d, 0) {
-		return fmt.Errorf("parameter 'd' must be a finite number")
-	}
-
-	req.D = d
-	return nil
-}
-
-func cubeRoot(x float64) float64 {
-	if x == 0 {
-		return 0
-	}
-
-	const (
-		precision = 1e-10
-		maxIter   = 100
-	)
-
-	z := x / 3
-	for i := 0; i < maxIter; i++ {
-		// z может занулиться или уйти в Inf на экстремально малых/больших
-		// входах — в этом случае x/(z*z) даёт Inf/NaN и итерация перестаёт
-		// сходиться. Прерываемся, чтобы цикл всегда завершался.
-		if z == 0 || math.IsInf(z, 0) {
-			break
-		}
-		nextZ := (2*z + x/(z*z)) / 3
-		if math.Abs(nextZ-z) < precision {
-			break
-		}
-		z = nextZ
-	}
-
-	return z
 }
