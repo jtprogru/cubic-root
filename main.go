@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"syscall"
 	"time"
@@ -33,66 +35,15 @@ const (
 	articleLink = "https://jtprog.ru/interview-task-0003/"
 )
 
-var (
-	debugMode     bool
-	requestsTotal = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "cubic_root_requests_total",
-			Help: "Total number of requests to the cubic root endpoint",
-		},
-		[]string{"status"},
-	)
-	requestDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "cubic_root_request_duration_seconds",
-			Help:    "Histogram of response time for cubic root requests",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"status"},
-	)
-	requestSize = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "cubic_root_request_size_bytes",
-			Help:    "Histogram of request sizes in bytes.",
-			Buckets: prometheus.ExponentialBuckets(10, 2, 10),
-		},
-	)
-	responseSize = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "cubic_root_response_size_bytes",
-			Help:    "Histogram of response sizes in bytes.",
-			Buckets: prometheus.ExponentialBuckets(10, 2, 10),
-		},
-	)
-	activeRequests = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "cubic_root_active_requests",
-			Help: "Number of active requests being processed.",
-		},
-	)
-)
-
-func init() {
-	var err error
-	debugEnv := os.Getenv("DEBUG")
-	debugMode, err = strconv.ParseBool(debugEnv)
-	if err != nil {
-		debugMode = false
-	}
-
+// setupLogging настраивает JSON-логгер slog, в debug-режиме с уровнем DEBUG.
+func setupLogging(debug bool) {
 	level := slog.LevelInfo
-	if debugMode {
+	if debug {
 		level = slog.LevelDebug
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
 	})))
-
-	prometheus.MustRegister(requestSize)
-	prometheus.MustRegister(responseSize)
-	prometheus.MustRegister(activeRequests)
-	prometheus.MustRegister(requestsTotal)
-	prometheus.MustRegister(requestDuration)
 }
 
 // traceAttrs extracts trace_id and span_id from ctx for structured logging.
@@ -136,6 +87,10 @@ func initTracer(ctx context.Context) (func(), error) {
 }
 
 func main() {
+	// Невалидное или пустое значение DEBUG означает выключенный debug-режим.
+	debugMode, _ := strconv.ParseBool(os.Getenv("DEBUG"))
+	setupLogging(debugMode)
+
 	ctx := context.Background()
 
 	port, err := portFromEnv("PORT", 8080)
@@ -155,23 +110,8 @@ func main() {
 		shutdownTracer = func() {}
 	}
 
-	// Публичный listener: бизнес-API и health-проба.
-	publicMux := http.NewServeMux()
-	publicMux.Handle("GET /health", otelhttp.NewHandler(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}),
-		"/health",
-	))
-	publicMux.Handle("GET /cubic-root", otelhttp.NewHandler(
-		http.HandlerFunc(cubicRootHandler),
-		"/cubic-root",
-	))
-
-	// Internal listener: метрики Prometheus вынесены на отдельный порт, чтобы
-	// их нельзя было достать через публичный Ingress/сервис.
-	metricsMux := http.NewServeMux()
-	metricsMux.Handle("GET /metrics", promhttp.Handler())
+	reg := newRegistry()
+	m := newMetrics(reg)
 
 	slog.Info("server starting",
 		"version", Version,
@@ -181,8 +121,8 @@ func main() {
 		"article", articleLink,
 	)
 
-	server := newHTTPServer(port, publicMux)
-	metricsServer := newHTTPServer(metricsPort, metricsMux)
+	server := newHTTPServer(port, newPublicHandler(m))
+	metricsServer := newHTTPServer(metricsPort, newMetricsHandler(reg))
 
 	serveErr := make(chan error, 2)
 	go func() {
@@ -222,6 +162,34 @@ func main() {
 	slog.Info("server stopped gracefully")
 }
 
+// newPublicHandler собирает публичный listener: бизнес-API и health-пробу,
+// обёрнутые HTTP-метриками.
+func newPublicHandler(m *metrics) http.Handler {
+	routes := map[string]http.Handler{
+		"GET /health":     otelhttp.NewHandler(http.HandlerFunc(healthHandler), "/health"),
+		"GET /cubic-root": otelhttp.NewHandler(http.HandlerFunc(cubicRootHandler), "/cubic-root"),
+	}
+	mux := http.NewServeMux()
+	for pattern, h := range routes {
+		mux.Handle(pattern, h)
+	}
+	return instrumentHTTP(mux, m, slices.Collect(maps.Keys(routes))...)
+}
+
+// newMetricsHandler собирает internal listener: метрики вынесены на отдельный
+// порт, чтобы их нельзя было достать через публичный Ingress/сервис.
+func newMetricsHandler(reg *prometheus.Registry) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.InstrumentMetricHandler(reg,
+		promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}),
+	))
+	return mux
+}
+
+func healthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
 // portFromEnv читает порт из переменной окружения name, возвращая def, если
 // переменная не задана.
 func portFromEnv(name string, def int) (int, error) {
@@ -247,26 +215,9 @@ func newHTTPServer(port int, handler http.Handler) *http.Server {
 }
 
 func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
-	activeRequests.Inc()
-	defer activeRequests.Dec()
-
-	startTime := time.Now()
-	var status string
-
-	defer func() {
-		duration := time.Since(startTime).Seconds()
-		requestDuration.WithLabelValues(status).Observe(duration)
-	}()
-
-	if r.ContentLength >= 0 {
-		requestSize.Observe(float64(r.ContentLength))
-	}
-
 	var req CubicRootRequest
 	if err := parseQueryParamsToStruct(r.URL.Query(), &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		status = "400"
-		requestsTotal.WithLabelValues(status).Inc()
 		return
 	}
 
@@ -290,15 +241,10 @@ func cubicRootHandler(w http.ResponseWriter, r *http.Request) {
 		errArgs := append(traceAttrs(ctx), "err", err)
 		slog.ErrorContext(ctx, "encode response", errArgs...)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		status = "500"
-		requestsTotal.WithLabelValues(status).Inc()
 		return
 	}
 
-	responseSize.Observe(float64(len(responseBytes)))
 	_, _ = w.Write(responseBytes)
-	status = "200"
-	requestsTotal.WithLabelValues(status).Inc()
 }
 
 type CubicRootRequest struct {

@@ -47,6 +47,22 @@ make build-bin
 go build -o bin/cubic-root main.go
 ```
 
+## Метрики
+
+Приложение отдаёт метрики на внутреннем порту `METRICS_PORT` (по умолчанию `9090`) по пути `/metrics`. Публичный порт их не отдаёт.
+
+HTTP-слой (golden signals) снимает middleware со всех запросов, включая отклонённые роутером. Имена по OTel semantic conventions:
+
+| метрика | тип | labels | что показывает |
+|---|---|---|---|
+| `http_server_request_duration_seconds` | histogram | `http_request_method`, `http_route`, `http_response_status_code` | латентность; `_count` даёт трафик и ошибки |
+| `http_server_active_requests` | gauge | `http_request_method` | запросы в обработке (saturation) |
+| `http_server_response_body_size_bytes` | histogram | `http_route` | размер ответов |
+
+`http_route` — паттерн маршрута без метода (`/cubic-root`, `/health`) или `unmatched` для 404 и 405. Нестандартные HTTP-методы записываются как `_OTHER`. Так ни путь, ни метод из запроса не могут породить новые серии.
+
+Рантайм и сборка: стандартные `go_*` и `process_*`, а также `go_sched_latencies_seconds` (сколько горутина ждёт CPU), `go_sync_mutex_wait_total_seconds_total` (ожидание на мьютексах), `go_cpu_classes_*` (разбивка CPU, в том числе доля GC) и `cubic_root_build_info{version, revision}`.
+
 ## Observability
 
 Локальный стек наблюдаемости собран на VictoriaMetrics и поднимается командой `make obs-up` (останавливается `make obs-down`):

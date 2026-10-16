@@ -26,3 +26,6 @@ go.work.sum
 bin/
 .idea/
 .serena/
+
+# Binary from `go build` in the repo root
+/cubic-root

@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestCubicRootHandler_ValidRequest(t *testing.T) {
@@ -134,8 +136,7 @@ func TestCubicRoot_Terminates(t *testing.T) {
 // TestMethodWhitelist проверяет, что эндпоинт отвечает только на GET, а на
 // прочие методы возвращает 405.
 func TestMethodWhitelist(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.Handle("GET /cubic-root", http.HandlerFunc(cubicRootHandler))
+	mux := newPublicHandler(newMetrics(prometheus.NewRegistry()))
 
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
