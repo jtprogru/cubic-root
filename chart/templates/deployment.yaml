@@ -47,6 +47,10 @@ spec:
               {{- else }}
               value: "false"
               {{- end }}
+            - name: CACHE_SIZE
+              value: {{ .Values.config.cache.size | quote }}
+            - name: CACHE_TTL
+              value: {{ .Values.config.cache.ttl | quote }}
             {{- if .Values.tracing.otlpEndpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.tracing.otlpEndpoint | quote }}

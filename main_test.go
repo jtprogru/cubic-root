@@ -13,13 +13,23 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
+// testAPIConfig — конфигурация API для тестов: кэш выключен, чтобы каждый
+// запрос считался заново.
+var testAPIConfig = apiConfig{}
+
+// newTestHandler собирает публичный handler на свежем registry.
+func newTestHandler(cfg apiConfig) (http.Handler, *prometheus.Registry, *metrics) {
+	reg := prometheus.NewRegistry()
+	m := newMetrics(reg)
+	return newPublicHandler(newAPI(cfg, m, reg)), reg, m
+}
+
 // serve выполняет запрос через публичный handler со свежим registry.
 func serve(t *testing.T, method, target string) (*httptest.ResponseRecorder, *prometheus.Registry, *metrics) {
 	t.Helper()
-	reg := prometheus.NewRegistry()
-	m := newMetrics(reg)
+	h, reg, m := newTestHandler(testAPIConfig)
 	rr := httptest.NewRecorder()
-	newPublicHandler(m).ServeHTTP(rr, httptest.NewRequest(method, target, nil))
+	h.ServeHTTP(rr, httptest.NewRequest(method, target, nil))
 	return rr, reg, m
 }
 
@@ -157,9 +167,7 @@ func TestRelativeError(t *testing.T) {
 }
 
 func TestDomainMetrics(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	m := newMetrics(reg)
-	h := newPublicHandler(m)
+	h, reg, m := newTestHandler(testAPIConfig)
 	for _, d := range []string{"27", "1e30"} {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cubic-root?d="+d, nil))
 	}
@@ -211,7 +219,7 @@ func TestParseD(t *testing.T) {
 // TestMethodWhitelist проверяет, что эндпоинт отвечает только на GET, а на
 // прочие методы возвращает 405.
 func TestMethodWhitelist(t *testing.T) {
-	mux := newPublicHandler(newMetrics(prometheus.NewRegistry()))
+	mux, _, _ := newTestHandler(testAPIConfig)
 
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
@@ -248,7 +256,8 @@ func BenchmarkCubicRootHandler(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		values[i] = rand.Float64() * 1e10 // Числа от 0 до 10,000,000,000
 	}
-	a := newAPI(newMetrics(prometheus.NewRegistry()))
+	reg := prometheus.NewRegistry()
+	a := newAPI(testAPIConfig, newMetrics(reg), reg)
 
 	// Сбрасываем таймер, чтобы исключить время инициализации данных
 	b.ResetTimer()

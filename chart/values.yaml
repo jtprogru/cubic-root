@@ -16,6 +16,12 @@ image:
 # Configuration for the service.
 config:
   debug: false
+  # In-memory LRU cache of computed results.
+  cache:
+    # Maximum number of cached results; 0 disables the cache.
+    size: 10000
+    # How long a cached result lives (Go duration).
+    ttl: 5m
 
 # Distributed tracing configuration (OpenTelemetry).
 tracing:

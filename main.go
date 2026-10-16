@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"slices"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -83,22 +82,14 @@ func initTracer(ctx context.Context) (func(), error) {
 }
 
 func main() {
-	// Невалидное или пустое значение DEBUG означает выключенный debug-режим.
-	debugMode, _ := strconv.ParseBool(os.Getenv("DEBUG"))
-	setupLogging(debugMode)
+	cfg, err := loadConfig()
+	setupLogging(cfg.Debug)
+	if err != nil {
+		slog.Error("invalid configuration", "err", err)
+		os.Exit(1)
+	}
 
 	ctx := context.Background()
-
-	port, err := portFromEnv("PORT", 8080)
-	if err != nil {
-		slog.Error("invalid PORT", "err", err)
-		os.Exit(1)
-	}
-	metricsPort, err := portFromEnv("METRICS_PORT", 9090)
-	if err != nil {
-		slog.Error("invalid METRICS_PORT", "err", err)
-		os.Exit(1)
-	}
 
 	shutdownTracer, err := initTracer(ctx)
 	if err != nil {
@@ -107,18 +98,24 @@ func main() {
 	}
 
 	reg := newRegistry()
-	m := newMetrics(reg)
+	a := newAPI(cfg.API, newMetrics(reg), reg)
 
 	slog.Info("server starting",
 		"version", Version,
-		"port", port,
-		"metricsPort", metricsPort,
-		"debug", debugMode,
+		"port", cfg.Port,
+		"metricsPort", cfg.MetricsPort,
+		"debug", cfg.Debug,
+		"cacheSize", cfg.API.CacheSize,
+		"cacheTTL", cfg.API.CacheTTL,
 		"article", articleLink,
 	)
+	if cfg.API.CalcDelay > 0 {
+		slog.Warn("artificial calculation delay is enabled",
+			"calcDelay", cfg.API.CalcDelay, "calcDelayJitter", cfg.API.CalcDelayJitter)
+	}
 
-	server := newHTTPServer(port, newPublicHandler(m))
-	metricsServer := newHTTPServer(metricsPort, newMetricsHandler(reg))
+	server := newHTTPServer(cfg.Port, newPublicHandler(a))
+	metricsServer := newHTTPServer(cfg.MetricsPort, newMetricsHandler(reg))
 
 	serveErr := make(chan error, 2)
 	go func() {
@@ -160,8 +157,7 @@ func main() {
 
 // newPublicHandler собирает публичный listener: бизнес-API и health-пробу,
 // обёрнутые HTTP-метриками.
-func newPublicHandler(m *metrics) http.Handler {
-	a := newAPI(m)
+func newPublicHandler(a *api) http.Handler {
 	routes := map[string]http.Handler{
 		"GET /health":     otelhttp.NewHandler(http.HandlerFunc(healthHandler), "/health"),
 		"GET /cubic-root": otelhttp.NewHandler(http.HandlerFunc(a.cubicRoot), "/cubic-root"),
@@ -170,7 +166,7 @@ func newPublicHandler(m *metrics) http.Handler {
 	for pattern, h := range routes {
 		mux.Handle(pattern, h)
 	}
-	return instrumentHTTP(mux, m, slices.Collect(maps.Keys(routes))...)
+	return instrumentHTTP(mux, a.metrics, slices.Collect(maps.Keys(routes))...)
 }
 
 // newMetricsHandler собирает internal listener: метрики вынесены на отдельный
@@ -185,16 +181,6 @@ func newMetricsHandler(reg *prometheus.Registry) http.Handler {
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
-}
-
-// portFromEnv читает порт из переменной окружения name, возвращая def, если
-// переменная не задана.
-func portFromEnv(name string, def int) (int, error) {
-	v := os.Getenv(name)
-	if v == "" {
-		return def, nil
-	}
-	return strconv.Atoi(v)
 }
 
 // newHTTPServer создаёт http.Server с консервативными тайм-аутами и лимитом

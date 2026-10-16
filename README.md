@@ -13,6 +13,36 @@
 
 Приложение по умолчанию слушает на порту 8080.
 
+### Конфигурация
+
+Все настройки задаются переменными окружения. Невалидное значение не даёт процессу стартовать, ошибки по всем переменным выводятся разом.
+
+| переменная | по умолчанию | что задаёт |
+|---|---|---|
+| `PORT` | `8080` | порт публичного API |
+| `METRICS_PORT` | `9090` | внутренний порт `/metrics` |
+| `DEBUG` | `false` | debug-логи, в том числе по каждому запросу |
+| `CACHE_SIZE` | `10000` | размер кэша результатов; `0` выключает кэш |
+| `CACHE_TTL` | `5m` | время жизни записи кэша; `0` — без устаревания |
+| `CALC_DELAY` | `0` | искусственная задержка вычисления на промахе кэша, для экспериментов |
+| `CALC_DELAY_JITTER` | `0` | равномерный разброс `±` вокруг `CALC_DELAY` |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` и другие `OTEL_*` | — | экспорт трейсов, стандартные переменные OpenTelemetry SDK |
+
+### Кэш
+
+Результаты хранятся в in-memory LRU-кэше с TTL (`internal/cache`). Ключ — значение `d` после парсинга, поэтому `27`, `27.0` и `2.7e1` попадают в одну запись. Одновременные промахи по одному ключу ждут одно вычисление (singleflight). Результаты, которым нельзя доверять (`max_iter`, `degenerate`), в кэш не кладутся. Откуда взят ответ, видно по заголовку `X-Cache: HIT|MISS`.
+
+Само вычисление стоит около 230ns, поэтому без `CALC_DELAY` кэш почти не влияет на латентность, зато заметно сокращает работу. Прогон `make test-load SCENARIO=hot-keys` (50 VU, 60s, ~2000 RPS) на Apple M4 Max:
+
+| конфигурация | hit ratio | вычислений/с | p50 сервера | p99 сервера |
+|---|---|---|---|---|
+| кэш, без задержки | 79.1% | 407 | 27µs | 165µs |
+| без кэша, без задержки | — | 1 930 | 27µs | 229µs |
+| кэш, `CALC_DELAY=2ms ±1ms` | 79.1% | 385 | 34µs | 4.8ms |
+| без кэша, `CALC_DELAY=2ms ±1ms` | — | 1 740 | 2.65ms | 5.0ms |
+
+С задержкой кэш снимает медиану с 2.65ms до 34µs, но p99 почти не меняется: в хвост попадают промахи. Сравнить это на графиках можно в ряду Cache дашборда `cubic-root`.
+
 ### Основные команды для разработки
 
 Все команды можно посмотреть запустив `make` (или `make help`) и получив такой вывод:
@@ -29,7 +59,7 @@
   test-unit        Run unit tests
   test-bench       Run benchmarks
   run-bin          Run binary
-  test-load        Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|spike (see k6/load.js)
+  test-load        Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|hot-keys|spike (see k6/load.js)
   test-load-smoke  Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
   run-traces       Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
   run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
@@ -70,6 +100,17 @@ HTTP-слой (golden signals) снимает middleware со всех запр�
 | `cubic_root_result_relative_error` | histogram | — | относительная ошибка `\|z³−d\|/\|d\|`, correctness SLI по бакету `le="1e-12"`; ошибка от 100% записывается как 1 |
 | `cubic_root_input_magnitude_log10` | histogram | — | порядок величины `log10\|d\|`: профиль нагрузки |
 | `cubic_root_validation_errors_total` | counter | `reason` = `missing` / `not_a_number` / `non_finite` | из чего состоят 400-е ответы |
+
+Метрики кэша:
+
+| метрика | тип | labels | что показывает |
+|---|---|---|---|
+| `cubic_root_cache_requests_total` | counter | `result` = `hit` / `miss` | hit ratio |
+| `cubic_root_cache_evictions_total` | counter | `reason` = `capacity` / `expired` | `capacity` — кэш мал, `expired` — TTL короткий |
+| `cubic_root_cache_entries` | gauge | — | текущий размер, считывается при scrape |
+| `cubic_root_cache_capacity_entries` | gauge | — | лимит размера, `0` при выключенном кэше |
+| `cubic_root_cache_hit_age_seconds` | histogram | — | возраст записи в момент попадания, для подбора `CACHE_TTL` |
+| `cubic_root_cache_coalesced_total` | counter | — | промахи, дождавшиеся чужого вычисления |
 
 Рантайм и сборка: стандартные `go_*` и `process_*`, а также `go_sched_latencies_seconds` (сколько горутина ждёт CPU), `go_sync_mutex_wait_total_seconds_total` (ожидание на мьютексах), `go_cpu_classes_*` (разбивка CPU, в том числе доля GC) и `cubic_root_build_info{version, revision}`.
 
@@ -133,6 +174,7 @@ ok  	github.com/jtprogru/cubic-root	4.088s
 | `baseline` (по умолчанию) | разгон до 3500 VU, `d` равномерно в [1e6, 1e9] | latency и saturation под нагрузкой |
 | `wide-range` | 50 VU, `\|d\|` log-uniform в [1e-20, 1e40] с обоими знаками | точность и сходимость алгоритма: k6 сверяет ответ с `Math.cbrt` |
 | `bad-requests` | 50 VU, четверть запросов невалидные или POST | 4xx/405 в HTTP-метриках и причины в `cubic_root_validation_errors_total` |
+| `hot-keys` | 50 VU, 80% запросов по 1000 «горячим» значениям | hit ratio кэша; k6 сверяет его по заголовку `X-Cache` |
 | `spike` | скачок с 50 до 3000 VU и обратно | saturation и восстановление |
 
 Например: `make test-load SCENARIO=wide-range`. Для длинных прогонов стоит снизить долю трейсов: `TRACES_SAMPLE_RATIO=0.01 make obs-up`.

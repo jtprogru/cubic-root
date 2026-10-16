@@ -4,9 +4,12 @@ import (
 	"math"
 	"regexp"
 	"runtime/debug"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+
+	"github.com/jtprogru/cubic-root/internal/cache"
 )
 
 // httpDurationBuckets — бакеты латентности HTTP от 50µs до 1s. Хендлер отвечает
@@ -37,6 +40,11 @@ type metrics struct {
 	relativeError    prometheus.Histogram
 	inputMagnitude   prometheus.Histogram
 	validationErrors *prometheus.CounterVec
+
+	cacheRequests  *prometheus.CounterVec
+	cacheEvictions *prometheus.CounterVec
+	cacheHitAge    prometheus.Histogram
+	cacheCoalesced prometheus.Counter
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -81,6 +89,24 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		Help: "Requests rejected because of invalid input, by reason.",
 	}, []string{"reason"})
 
+	m.cacheRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cubic_root_cache_requests_total",
+		Help: "Response cache lookups, by result (hit or miss).",
+	}, []string{"result"})
+	m.cacheEvictions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cubic_root_cache_evictions_total",
+		Help: "Entries removed from the response cache, by reason (capacity or expired).",
+	}, []string{"reason"})
+	m.cacheHitAge = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "cubic_root_cache_hit_age_seconds",
+		Help:    "Age of cache entries at the moment they are hit.",
+		Buckets: []float64{0.1, 0.5, 1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
+	})
+	m.cacheCoalesced = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cubic_root_cache_coalesced_total",
+		Help: "Cache misses that waited for a computation already started by another request.",
+	})
+
 	// Серии с нулём создаются заранее: иначе доля ошибок до первой ошибки
 	// превращается в «no data» вместо 0.
 	for _, o := range outcomes {
@@ -89,12 +115,62 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	for _, r := range validationReasons {
 		m.validationErrors.WithLabelValues(r)
 	}
+	for _, r := range []string{"hit", "miss"} {
+		m.cacheRequests.WithLabelValues(r)
+	}
+	for _, r := range []cache.EvictReason{cache.EvictCapacity, cache.EvictExpired} {
+		m.cacheEvictions.WithLabelValues(string(r))
+	}
 
 	reg.MustRegister(
 		m.requestDuration, m.activeRequests, m.responseSize,
 		m.calculations, m.iterations, m.relativeError, m.inputMagnitude, m.validationErrors,
+		m.cacheRequests, m.cacheEvictions, m.cacheHitAge, m.cacheCoalesced,
 	)
 	return m
+}
+
+// registerCacheSize регистрирует размер кэша и его лимит. Размер считывается
+// при scrape, а не обновляется на каждой операции: горячий путь кэша остаётся
+// без лишних атомарных операций.
+func (m *metrics) registerCacheSize(reg prometheus.Registerer, size func() int, capacity int) {
+	reg.MustRegister(
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cubic_root_cache_entries",
+			Help: "Entries currently stored in the response cache.",
+		}, func() float64 { return float64(size()) }),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cubic_root_cache_capacity_entries",
+			Help: "Maximum number of entries in the response cache; 0 when the cache is disabled.",
+		}, func() float64 { return float64(capacity) }),
+	)
+}
+
+// cacheObserver переводит события кэша в метрики.
+type cacheObserver struct {
+	hits, misses prometheus.Counter
+	evictions    *prometheus.CounterVec
+	hitAge       prometheus.Histogram
+}
+
+func newCacheObserver(m *metrics) cacheObserver {
+	return cacheObserver{
+		hits:      m.cacheRequests.WithLabelValues("hit"),
+		misses:    m.cacheRequests.WithLabelValues("miss"),
+		evictions: m.cacheEvictions,
+		hitAge:    m.cacheHitAge,
+	}
+}
+
+func (o cacheObserver) Hit(age time.Duration) {
+	o.hits.Inc()
+	o.hitAge.Observe(age.Seconds())
+}
+
+func (o cacheObserver) Miss() { o.misses.Inc() }
+
+func (o cacheObserver) Evict(reason cache.EvictReason) {
+	o.evictions.WithLabelValues(string(reason)).Inc()
 }
 
 // observeInput записывает порядок величины входа: профиль нагрузки.
