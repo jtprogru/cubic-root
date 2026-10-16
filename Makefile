@@ -48,7 +48,7 @@ run-bin: build-bin ## Run binary
 check-k6:
 	@command -v k6 >/dev/null 2>&1 || { echo "k6 is not installed: brew install k6"; exit 1; }
 
-test-load: check-k6 ## Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|spike (see k6/load.js)
+test-load: check-k6 ## Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|hot-keys|spike (see k6/load.js)
 	k6 run --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) $(K6_SCRIPT)
 
 test-load-smoke: check-k6 ## Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает

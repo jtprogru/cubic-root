@@ -58,9 +58,7 @@ func TestInstrumentHTTP_Labels(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			reg := prometheus.NewRegistry()
-			m := newMetrics(reg)
-			h := newPublicHandler(m)
+			h, reg, m := newTestHandler(testAPIConfig)
 
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, httptest.NewRequest(tc.method, tc.target, nil))
@@ -106,8 +104,7 @@ func TestInstrumentHTTP_UntrustedPattern(t *testing.T) {
 }
 
 func TestInstrumentHTTP_ResponseSize(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	h := newPublicHandler(newMetrics(reg))
+	h, reg, _ := newTestHandler(testAPIConfig)
 
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/cubic-root?d=27", nil))
@@ -126,7 +123,7 @@ func TestInstrumentHTTP_ResponseSize(t *testing.T) {
 // измерения и суффиксы должны соответствовать конвенциям Prometheus.
 func TestMetricsLint(t *testing.T) {
 	reg := newRegistry()
-	h := newPublicHandler(newMetrics(reg))
+	h := newPublicHandler(newAPI(apiConfig{CacheSize: 10}, newMetrics(reg), reg))
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cubic-root?d=27", nil))
 
 	problems, err := testutil.GatherAndLint(reg,
@@ -134,6 +131,17 @@ func TestMetricsLint(t *testing.T) {
 		"http_server_active_requests",
 		"http_server_response_body_size_bytes",
 		"cubic_root_build_info",
+		"cubic_root_calculations_total",
+		"cubic_root_newton_iterations",
+		"cubic_root_result_relative_error",
+		"cubic_root_input_magnitude_log10",
+		"cubic_root_validation_errors_total",
+		"cubic_root_cache_requests_total",
+		"cubic_root_cache_evictions_total",
+		"cubic_root_cache_hit_age_seconds",
+		"cubic_root_cache_coalesced_total",
+		"cubic_root_cache_entries",
+		"cubic_root_cache_capacity_entries",
 	)
 	if err != nil {
 		t.Fatalf("lint: %v", err)
@@ -145,7 +153,7 @@ func TestMetricsLint(t *testing.T) {
 
 func TestMetricsHandler(t *testing.T) {
 	reg := newRegistry()
-	h := newPublicHandler(newMetrics(reg))
+	h := newPublicHandler(newAPI(apiConfig{CacheSize: 10}, newMetrics(reg), reg))
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cubic-root?d=27", nil))
 
 	rr := httptest.NewRecorder()

@@ -13,6 +13,12 @@ services:
       # Lower the ratio for load tests, e.g. TRACES_SAMPLE_RATIO=0.01 make obs-up
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=${TRACES_SAMPLE_RATIO:-1.0}
+      # Response cache (CACHE_SIZE=0 disables it) and an artificial delay of the
+      # computation on cache misses, e.g. CALC_DELAY=2ms make obs-up
+      - CACHE_SIZE=${CACHE_SIZE:-10000}
+      - CACHE_TTL=${CACHE_TTL:-5m}
+      - CALC_DELAY=${CALC_DELAY:-0s}
+      - CALC_DELAY_JITTER=${CALC_DELAY_JITTER:-0s}
     depends_on:
       victoriatraces:
         condition: service_started
