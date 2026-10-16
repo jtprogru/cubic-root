@@ -23,7 +23,9 @@ jobs:
         run: |
           go get .
       - name: Build
-        run: go build -v -o bin/cubic-root-${{ matrix.go-version }} ./...
+        # -o into a file works only for a single package: build the binary from the
+        # main package, the rest of the module is compiled by vet and tests.
+        run: go build -v -o bin/cubic-root-${{ matrix.go-version }} .
       - name: Vet
         run: go vet ./...
       - name: Vulnerability scan (govulncheck)
