@@ -76,10 +76,10 @@ obs-up: ## Start full observability stack (VictoriaMetrics + vmagent + vmalert +
 
 obs-check: ## Validate observability configs: compose, vmalert rules and their unit tests, Vector
 	docker compose config --quiet
-	docker run --rm -v "$(CURDIR)/observability/vmalert:/vmalert:ro" victoriametrics/vmalert:$(VM_VERSION) \
-		-rule='/vmalert/rules/*.yml' -dryRun -loggerLevel=ERROR
-	docker run --rm -v "$(CURDIR)/observability/vmalert:/vmalert:ro" victoriametrics/vmalert-tool:$(VM_VERSION) \
-		unittest --files='/vmalert/tests/*.yml'
+	docker run --rm -v "$(CURDIR):/repo:ro" victoriametrics/vmalert:$(VM_VERSION) \
+		-rule='/repo/observability/vmalert/rules/*.yml' -rule='/repo/chart/files/vmrules/*.yml' -dryRun -loggerLevel=ERROR
+	docker run --rm -v "$(CURDIR):/repo:ro" victoriametrics/vmalert-tool:$(VM_VERSION) \
+		unittest --files='/repo/observability/vmalert/tests/*.yml'
 	docker run --rm -v "$(CURDIR)/observability/vector/vector.yaml:/etc/vector/vector.yaml:ro" $(VECTOR_IMAGE) \
 		validate --no-environment /etc/vector/vector.yaml
 
