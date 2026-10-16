@@ -1,55 +1,139 @@
 {
   "title": "cubic-root",
   "uid": "cubic-root",
-  "schemaVersion": 38,
+  "description": "Golden signals, work, cache and runtime of cubic-root.",
+  "tags": [
+    "cubic-root"
+  ],
+  "schemaVersion": 41,
   "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
   "refresh": "10s",
-  "time": { "from": "now-30m", "to": "now" },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "timepicker": {},
-  "tags": ["cubic-root"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "victoriametrics-metrics-datasource",
+        "hide": 0,
+        "current": {}
+      },
+      {
+        "name": "job",
+        "label": "Job",
+        "type": "query",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(cubic_root_build_info, job)",
+          "refId": "job"
+        },
+        "definition": "label_values(cubic_root_build_info, job)",
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "current": {}
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "changes(process_start_time_seconds{job=\"$job\"}[2m]) > 0",
+        "titleFormat": "restart / deploy",
+        "step": "60s"
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
+      "type": "row",
+      "title": "Golden signals: /cubic-root",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
       "type": "stat",
-      "title": "RPS",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "title": "Traffic",
+      "description": "Requests per second to /cubic-root.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
-        "colorMode": "background",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
         "graphMode": "area",
         "textMode": "auto"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 50 },
-              { "color": "red", "value": 200 }
-            ]
-          }
-        }
+          "unit": "reqps"
+        },
+        "overrides": []
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "sum(rate(cubic_root_requests_total[1m]))",
-          "legendFormat": "RPS"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum(rate(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\"}[$__rate_interval]))",
+          "legendFormat": ""
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
     },
     {
-      "id": 2,
       "type": "stat",
-      "title": "Error Rate",
-      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "title": "Errors (5xx)",
+      "description": "Share of 5xx responses. This is what the availability SLI counts.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
-        "colorMode": "background",
-        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area",
         "textMode": "auto"
       },
       "fieldConfig": {
@@ -58,31 +142,118 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.01 },
-              { "color": "red", "value": 0.05 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.001
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
             ]
-          }
-        }
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2
+        },
+        "overrides": []
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "sum(rate(cubic_root_requests_total{status=~\"4..|5..\"}[1m])) / sum(rate(cubic_root_requests_total[1m]))",
-          "legendFormat": "Error Rate"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "(sum(rate(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\"}[$__rate_interval]))",
+          "legendFormat": ""
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 3,
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
     },
     {
-      "id": 3,
       "type": "stat",
-      "title": "P95 Latency",
-      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "title": "Client errors (4xx)",
+      "description": "Share of 4xx responses. Client mistakes, not part of the availability SLI.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
-        "colorMode": "background",
-        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "(sum(rate(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code=~\"4..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\"}[$__rate_interval]))",
+          "legendFormat": ""
+        }
+      ],
+      "id": 4,
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Latency p99",
+      "description": "p99 of successful (non-5xx) requests.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area",
         "textMode": "auto"
       },
       "fieldConfig": {
@@ -91,164 +262,985 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 0.05 },
-              { "color": "red", "value": 0.1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.005
+              },
+              {
+                "color": "red",
+                "value": 0.025
+              }
             ]
+          },
+          "color": {
+            "mode": "thresholds"
           }
-        }
+        },
+        "overrides": []
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "P95"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\"}[$__rate_interval])))",
+          "legendFormat": ""
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 5,
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
     },
     {
-      "id": 4,
       "type": "stat",
-      "title": "Active Requests",
-      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "title": "In flight",
+      "description": "Requests being processed right now (all routes).",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "reduceOptions": { "calcs": ["lastNotNull"] },
-        "colorMode": "background",
-        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area",
         "textMode": "auto"
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 10 },
-              { "color": "red", "value": 50 }
-            ]
-          }
-        }
+          "unit": "short"
+        },
+        "overrides": []
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "cubic_root_active_requests",
-          "legendFormat": "Active"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum(http_server_active_requests{job=\"$job\"})",
+          "legendFormat": ""
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 6,
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
     },
     {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Request Rate by Status",
-      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "type": "stat",
+      "title": "Scheduler latency p99",
+      "description": "How long runnable goroutines wait for a CPU. Grows when the process is CPU-saturated.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
       },
       "fieldConfig": {
-        "defaults": { "unit": "reqps" },
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.001
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(go_sched_latencies_seconds_bucket{job=\"$job\"}[$__rate_interval])))",
+          "legendFormat": ""
+        }
+      ],
+      "id": 7,
+      "gridPos": {
+        "x": 20,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by route and status",
+      "description": "All routes, including requests rejected by the router (route=unmatched).",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"$job\"}[$__rate_interval]))",
+          "legendFormat": "{{http_route}} {{http_response_status_code}}"
+        }
+      ],
+      "id": 8,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency /cubic-root",
+      "description": "Quantiles of successful requests. Errors are shown separately so that fast 500s do not improve p99.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\"}[$__rate_interval])))",
+          "legendFormat": "p99"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "D",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code=~\"5..\"}[$__rate_interval])))",
+          "legendFormat": "p99 5xx"
+        }
+      ],
+      "id": 9,
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "heatmap",
+      "title": "Latency distribution /cubic-root",
+      "description": "Raw histogram buckets: where requests actually fall.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": {
+          "mode": "scheme",
+          "scheme": "Oranges",
+          "steps": 64,
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "reverse": false
+        },
+        "rowsFrame": {
+          "layout": "le"
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "unit": "s"
+        },
+        "tooltip": {
+          "mode": "single",
+          "yHistogram": true,
+          "showColorScale": false
+        },
+        "legend": {
+          "show": false
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        }
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\"}[$__rate_interval]))",
+          "legendFormat": "{{le}}",
+          "format": "heatmap"
+        }
+      ],
+      "id": 10,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Response body size /cubic-root",
+      "description": "",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "200" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
-          { "matcher": { "id": "byName", "options": "400" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] },
-          { "matcher": { "id": "byName", "options": "500" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "throughput, B/s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
         ]
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "rate(cubic_root_requests_total[1m])",
-          "legendFormat": "{{status}}"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "rate(http_server_response_body_size_bytes_sum{job=\"$job\", http_route=\"/cubic-root\"}[$__rate_interval]) / rate(http_server_response_body_size_bytes_count{job=\"$job\", http_route=\"/cubic-root\"}[$__rate_interval])",
+          "legendFormat": "avg"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum(rate(http_server_response_body_size_bytes_sum{job=\"$job\", http_route=\"/cubic-root\"}[$__rate_interval]))",
+          "legendFormat": "throughput, B/s"
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 11,
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      }
     },
     {
-      "id": 6,
+      "id": 12,
+      "type": "row",
+      "title": "Runtime: Go and process",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
       "type": "timeseries",
-      "title": "Latency Percentiles",
-      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "title": "CPU",
+      "description": "CPU cores used vs GOMAXPROCS. Since Go 1.25 GOMAXPROCS follows the cgroup CPU limit.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
-        "defaults": { "unit": "s" }
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.50, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "P50"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum(rate(process_cpu_seconds_total{job=\"$job\"}[$__rate_interval]))",
+          "legendFormat": "used, cores"
         },
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "P95"
-        },
-        {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.99, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "P99"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum(go_sched_gomaxprocs_threads{job=\"$job\"})",
+          "legendFormat": "GOMAXPROCS"
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 13,
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 8,
+        "h": 8
+      }
     },
     {
-      "id": 7,
       "type": "timeseries",
-      "title": "Request / Response Size",
-      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "title": "GC share of CPU",
+      "description": "",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
-        "defaults": { "unit": "bytes" }
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(cubic_root_request_size_bytes_bucket[5m])) by (le))",
-          "legendFormat": "Request P95"
-        },
-        {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "histogram_quantile(0.95, sum(rate(cubic_root_response_size_bytes_bucket[5m])) by (le))",
-          "legendFormat": "Response P95"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum(rate(go_cpu_classes_gc_total_cpu_seconds_total{job=\"$job\"}[$__rate_interval])) / sum(rate(go_cpu_classes_total_cpu_seconds_total{job=\"$job\"}[$__rate_interval]))",
+          "legendFormat": "gc"
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 14,
+      "gridPos": {
+        "x": 8,
+        "y": 22,
+        "w": 8,
+        "h": 8
+      }
     },
     {
-      "id": 8,
       "type": "timeseries",
-      "title": "Active Requests",
-      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "title": "Scheduler latency",
+      "description": "Time a runnable goroutine waits before it gets a thread. The Go-native saturation signal.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "single" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "blue" } }
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
-          "expr": "cubic_root_active_requests",
-          "legendFormat": "Active"
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(go_sched_latencies_seconds_bucket{job=\"$job\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(go_sched_latencies_seconds_bucket{job=\"$job\"}[$__rate_interval])))",
+          "legendFormat": "p99"
         }
       ],
-      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
+      "id": 15,
+      "gridPos": {
+        "x": 16,
+        "y": 22,
+        "w": 8,
+        "h": 8
+      }
     },
     {
-      "id": 9,
+      "type": "timeseries",
+      "title": "Memory",
+      "description": "",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum(process_resident_memory_bytes{job=\"$job\"})",
+          "legendFormat": "RSS"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum(go_memstats_heap_inuse_bytes{job=\"$job\"})",
+          "legendFormat": "heap in use"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "C",
+          "expr": "sum(go_gc_gomemlimit_bytes{job=\"$job\"} < 1e15)",
+          "legendFormat": "GOMEMLIMIT"
+        }
+      ],
+      "id": 16,
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Goroutines and threads",
+      "description": "",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum(go_goroutines{job=\"$job\"})",
+          "legendFormat": "goroutines"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "B",
+          "expr": "sum(go_threads{job=\"$job\"})",
+          "legendFormat": "threads"
+        }
+      ],
+      "id": 17,
+      "gridPos": {
+        "x": 8,
+        "y": 30,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Mutex wait",
+      "description": "Seconds per second spent waiting on sync.Mutex / RWMutex.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "sum(rate(go_sync_mutex_wait_total_seconds_total{job=\"$job\"}[$__rate_interval]))",
+          "legendFormat": "wait"
+        }
+      ],
+      "id": 18,
+      "gridPos": {
+        "x": 16,
+        "y": 30,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Version",
+      "description": "Version and VCS revision of the running build.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "cubic_root_build_info{job=\"$job\"}",
+          "legendFormat": "{{version}} ({{revision}})"
+        }
+      ],
+      "id": 19,
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 12,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Uptime",
+      "description": "Time since the last (re)start.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "refId": "A",
+          "expr": "min(time() - process_start_time_seconds{job=\"$job\"})",
+          "legendFormat": ""
+        }
+      ],
+      "id": 20,
+      "gridPos": {
+        "x": 12,
+        "y": 38,
+        "w": 12,
+        "h": 4
+      }
+    },
+    {
+      "id": 21,
+      "type": "row",
+      "title": "Logs and traces",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Log volume by level",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "refId": "A",
+          "queryType": "statsRange",
+          "editorMode": "code",
+          "expr": "{service=\"cubic-root\"} | stats by (level) count()",
+          "legendFormat": "{{level}}"
+        }
+      ],
+      "id": 22,
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent traces",
+      "datasource": {
+        "type": "jaeger",
+        "uid": "victoriatraces"
+      },
+      "description": "Latest traces of cubic-root in VictoriaTraces (Jaeger API). Click a trace ID to open it.",
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "jaeger",
+            "uid": "victoriatraces"
+          },
+          "refId": "A",
+          "queryType": "search",
+          "service": "cubic-root",
+          "limit": 20
+        }
+      ],
+      "id": 23,
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
       "type": "logs",
-      "title": "Application Logs",
-      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 10 },
+      "title": "Application logs",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victorialogs"
+      },
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -261,26 +1253,23 @@
       },
       "targets": [
         {
-          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
-          "expr": "{service=\"cubic-root\"}",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "refId": "A",
           "queryType": "instant",
           "editorMode": "code",
-          "legendFormat": ""
+          "expr": "{service=\"cubic-root\"}"
         }
       ],
-      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }
-    }
-  ],
-  "templating": {
-    "list": [
-      {
-        "name": "datasource",
-        "type": "datasource",
-        "query": "victoriametrics-metrics-datasource",
-        "label": "Datasource",
-        "hide": 0,
-        "current": {}
+      "id": 24,
+      "gridPos": {
+        "x": 0,
+        "y": 51,
+        "w": 24,
+        "h": 10
       }
-    ]
-  }
+    }
+  ]
 }
