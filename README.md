@@ -15,38 +15,45 @@
 
 ### Основные команды для разработки
 
-Все команды можно посмотреть запустив `task` и получив такой вывод:
+Все команды можно посмотреть запустив `make` (или `make help`) и получив такой вывод:
 
 ```log
-task: [default] task --list
-task: Available tasks for this project:
-* tests:              Run all tests
-* build:bin:          Build binary
-* build:docker:       Build docker image
-* push:docker:        Push docker image
-* run:bin:            Run binary
-* test:bench:         Run benchmarks
-* test:unit:          Run unit tests
+  help             Show available targets
+  deps-install     Download Go module dependencies
+  tidy             Sync go.mod and go.sum with the code
+  deps-update      Update all Go dependencies to the latest minor/patch versions
+  build-bin        Build binary
+  build-docker     Build docker image
+  push-docker      Push docker image
+  tests            Run all tests
+  test-unit        Run unit tests
+  test-bench       Run benchmarks
+  run-bin          Run binary
+  test-load        Run load test using k6 (stages: ramp-up 30s → load 240s → ramp-down 30s)
+  test-load-smoke  Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
+  run-tempo        Start Tempo for local tracing (OTLP HTTP :4318, API :3200)
+  run-traced       Run binary with tracing enabled (requires Tempo: make run-tempo)
+  obs-up           Start full observability stack (Tempo + Loki + Promtail + Prometheus + Grafana)
+  obs-down         Stop observability stack
 ```
 
-#### build:bin
+#### build-bin
 
 Собирает локально готовый бинарный файл и складывает его по пути `bin/cubic-root`:
 
 ```shell
-task build:bin
+make build-bin
 
-task: [build:bin] go build -o bin/cubic-root main.go
+go build -o bin/cubic-root main.go
 ```
 
 ## Testing
 
-Для тестирования приложения воспользуйтесь командой `task tests`, она запустит сначала `task test:unit` для юниттестов, а потом `task test:bench` для запуска бенчмарков. Пример вывода:
+Для тестирования приложения воспользуйтесь командой `make tests`, она запустит сначала `make test-unit` для юниттестов, а потом `make test-bench` для запуска бенчмарков. Пример вывода:
 
 ```shell
-task: [tests] echo "Running unit tests..."
 Running unit tests...
-task: [test:unit] go test -v -timeout 30s ./...
+go test -v -timeout 30s ./...
 === RUN   TestCubicRootHandler_ValidRequest
 --- PASS: TestCubicRootHandler_ValidRequest (0.00s)
 === RUN   TestCubicRootHandler_InvalidParameter
@@ -59,9 +66,8 @@ task: [test:unit] go test -v -timeout 30s ./...
 --- PASS: TestParseQueryParamsToStruct (0.00s)
 PASS
 ok  	github.com/jtprogru/cubic-root	(cached)
-task: [tests] echo "Running benchmarks..."
 Running benchmarks...
-task: [test:bench] go test -bench=. -run=^$ -v
+go test -bench=. -run='^$' -v
 goos: darwin
 goarch: arm64
 pkg: github.com/jtprogru/cubic-root
