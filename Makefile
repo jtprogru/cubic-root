@@ -59,11 +59,13 @@ run-tempo: ## Start Tempo for local tracing (OTLP HTTP :4318, API :3200)
 run-traced: build-bin ## Run binary with tracing enabled (requires Tempo: make run-tempo)
 	PORT=8080 DEBUG=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_EXPORTER_OTLP_INSECURE=true ./bin/cubic-root
 
-obs-up: ## Start full observability stack (Jaeger + Prometheus + Grafana)
+obs-up: ## Start full observability stack (Tempo + Loki + Promtail + Prometheus + Grafana)
 	docker compose up -d --build
-	@echo "Jaeger UI   → http://localhost:16686"
+	@echo "cubic-root  → http://localhost:8080"
+	@echo "Grafana     → http://localhost:3333 (по умолчанию admin/admin, переопределяется через GRAFANA_ADMIN_USER и GRAFANA_ADMIN_PASSWORD)"
 	@echo "Prometheus  → http://localhost:9090"
-	@echo "Grafana     → http://localhost:3333 (анонимный Admin)"
+	@echo "Tempo API   → http://localhost:3200"
+	@echo "Loki API    → http://localhost:3100"
 
 obs-down: ## Stop observability stack
 	docker compose down
