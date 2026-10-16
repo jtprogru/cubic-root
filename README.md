@@ -68,6 +68,7 @@
   run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
   obs-up           Start full observability stack (VictoriaMetrics + vmagent + vmalert + VictoriaLogs + Vector + VictoriaTraces + Grafana)
   obs-check        Validate observability configs: compose, vmalert rules and their unit tests, Vector
+  chart-check      Lint the Helm chart and validate rendered manifests with every feature enabled
   obs-down         Stop observability stack
 ```
 
@@ -148,13 +149,26 @@ Fault injection: `cubic_root_injected_faults_total{type}` (`error` / `latency`) 
 | латентность | 99% успешных запросов быстрее 10ms | бакет `le="0.01"` той же гистограммы |
 | корректность | 99.99% результатов с относительной ошибкой ≤ 1e-12 | бакет `le="1e-12"` у `cubic_root_result_relative_error` |
 
-Правила лежат в `observability/vmalert/rules/cubic-root.yml`: recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (вычисление не сошлось, клиент получил 500) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root SLO`.
+Правила лежат в `chart/files/vmrules/cubic-root.yml`: Helm chart поставляет их как `VMRule`, а локальный vmalert подключает тот же файл. Это recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (вычисление не сошлось, клиент получил 500) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root SLO`.
 
 Порог латентности выбран по измерениям: при 50 VU p99 сервера около 0.2ms, с `CALC_DELAY=2ms ±1ms` около 5ms. В сценарии `spike` (3000 VU, около 22 000 RPS) процесс упирается в CPU: p99 задержки планировщика доходит до 0.8s, и быстрее 10ms отвечают только 89% запросов, то есть бюджет горит.
 
 ### Fault injection
 
 Переменные `FAULT_*` добавляют сбои в ответы `/cubic-root`, чтобы проверять дашборды и алерты на живых ошибках: `FAULT_ERROR_RATE=0.03 make obs-up` отдаёт 3% ответов с кодом 500, `FAULT_LATENCY=50ms FAULT_LATENCY_RATE=0.2 make obs-up` замедляет каждый пятый запрос. Сбои включаются только через env, запросом их включить нельзя. `/health` они не затрагивают, иначе в Kubernetes начали бы падать пробы. Клиент, ушедший во время задержки, получает 499, а не 5xx. Инжектированные сбои видны в HTTP-метриках как обычные и отдельно в `cubic_root_injected_faults_total`.
+
+### Kubernetes
+
+Helm chart лежит в `chart/`. В кластере с VictoriaMetrics Operator сбор метрик и правила включаются флагами:
+
+```shell
+helm install cubic-root ./chart \
+  --set monitoring.vmServiceScrape.enabled=true \
+  --set monitoring.vmRule.enabled=true \
+  --set tracing.otlpEndpoint=http://victoria-traces:10428/insert/opentelemetry
+```
+
+`VMServiceScrape` собирает `/metrics` с порта `metrics` и выставляет `job="cubic-root"` по имени чарта, как в локальном стеке, поэтому правила и дашборды работают без правок. `VMRule` содержит тот же файл правил, что подключает локальный vmalert. Кэш настраивается через `config.cache.size` и `config.cache.ttl`. Переменные для экспериментов (`CALC_DELAY`, `FAULT_*`) в чарт намеренно не вынесены. Проверка чарта: `make chart-check`, это `helm lint` и kubeconform по манифестам со всеми включёнными флагами, CRD VictoriaMetrics тоже.
 
 ## Testing
 

@@ -11,6 +11,9 @@ jobs:
       # compose file, vmalert rules (dry run + unit tests), Vector config
       - name: Validate observability configs
         run: make obs-check
+      # helm lint + kubeconform over manifests rendered with every feature enabled
+      - name: Validate Helm chart
+        run: make chart-check
       - name: Validate Grafana dashboards
         run: |
           find observability/grafana/dashboards -name '*.json' -print0 \

@@ -1,7 +1,7 @@
-# Unit tests for observability/vmalert/rules/cubic-root.yml.
+# Unit tests for chart/files/vmrules/cubic-root.yml.
 # Run: make obs-check (or vmalert-tool unittest --files=observability/vmalert/tests/*.yml)
 rule_files:
-  - ../rules/cubic-root.yml
+  - ../../../chart/files/vmrules/cubic-root.yml
 
 evaluation_interval: 30s
 group_eval_order:

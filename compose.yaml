@@ -86,8 +86,11 @@ services:
       - "8880:8880" # rules and alerts UI
     volumes:
       - ./observability/vmalert/rules:/etc/vmalert/rules:ro
+      # SLI/SLO rules of the app ship with the Helm chart (VMRule) and are reused here.
+      - ./chart/files/vmrules:/etc/vmalert/app-rules:ro
     command:
       - -rule=/etc/vmalert/rules/*.yml
+      - -rule=/etc/vmalert/app-rules/*.yml
       - -datasource.url=http://victoriametrics:8428
       - -remoteWrite.url=http://victoriametrics:8428
       - -remoteRead.url=http://victoriametrics:8428
