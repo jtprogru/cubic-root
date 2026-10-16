@@ -67,6 +67,8 @@ http.setResponseCallback(http.expectedStatuses(200, 400, 405));
 
 export const options = {
   stages: scenario.stages,
+  // По умолчанию k6 не считает p(99), а итоговая сводка ниже его выводит.
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 
   thresholds: {
     http_req_failed:      ['rate<0.01'],  // < 1% ошибок
