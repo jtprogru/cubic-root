@@ -15,7 +15,7 @@ services:
 
   # --- Tracing ---
   tempo:
-    image: grafana/tempo:2.6.1
+    image: grafana/tempo:latest
     ports:
       - "3200:3200" # Tempo HTTP API (used by Grafana datasource)
       - "4318:4318" # OTLP HTTP receiver
@@ -23,11 +23,8 @@ services:
       - ./observability/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
     command: -config.file=/etc/tempo/tempo.yml
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget --no-verbose --tries=1 --spider http://localhost:3200/ready || exit 1",
-        ]
+      # Tempo 3.x image is distroless (no shell, no wget): use the built-in check against /ready
+      test: ["CMD", "/tempo", "-health"]
       interval: 5s
       timeout: 3s
       retries: 20
