@@ -24,6 +24,20 @@ func newTestHandler(cfg apiConfig) (http.Handler, *prometheus.Registry, *metrics
 	return newPublicHandler(newAPI(cfg, m, reg)), reg, m
 }
 
+// newTestHandlerWithCalc — то же, но с подменённым вычислением.
+func newTestHandlerWithCalc(cfg apiConfig, calc func(float64) (float64, calcStats)) (http.Handler, *prometheus.Registry, *metrics) {
+	reg := prometheus.NewRegistry()
+	m := newMetrics(reg)
+	a := newAPI(cfg, m, reg)
+	a.calc = calc
+	return newPublicHandler(a), reg, m
+}
+
+// notConverging имитирует вычисление, которое не сошлось.
+func notConverging(float64) (float64, calcStats) {
+	return 1e15, calcStats{Iterations: 100, Outcome: outcomeMaxIter}
+}
+
 // serve выполняет запрос через публичный handler со свежим registry.
 func serve(t *testing.T, method, target string) (*httptest.ResponseRecorder, *prometheus.Registry, *metrics) {
 	t.Helper()
@@ -49,7 +63,9 @@ func TestCubicRootHandler_ValidRequest(t *testing.T) {
 		t.Fatalf("Handler returned wrong status code: got %v, want %v", status, http.StatusOK)
 	}
 	resp := decodeResponse(t, rr)
-	expected := 3.0000000000000013 // Именно такое страшное число получается если взять кубический корень из 27
+	// Раньше здесь было 3.0000000000000013: итерация останавливалась по
+	// абсолютной точности 1e-10 и не доводила результат до точного.
+	expected := 3.0
 	if resp.Result != expected {
 		t.Errorf("Handler returned unexpected result: got %v, want %v", resp.Result, expected)
 	}
@@ -125,7 +141,8 @@ func TestCubicRoot_Terminates(t *testing.T) {
 }
 
 // TestCubicRoot_Stats фиксирует, сколько работы стоит вычисление и чем оно
-// заканчивается, в том числе на входах, где текущий алгоритм не сходится.
+// заканчивается. До перехода на итерацию по мантиссе 1e9 стоил 37 шагов, 1e30
+// упирался в лимит 100 шагов, а 1e-200 вырождался.
 func TestCubicRoot_Stats(t *testing.T) {
 	cases := []struct {
 		d          float64
@@ -133,15 +150,38 @@ func TestCubicRoot_Stats(t *testing.T) {
 		outcome    outcome
 	}{
 		{0, 0, outcomeTrivial},
-		{27, 8, outcomeConverged},
-		{1e9, 37, outcomeConverged},
-		{1e30, 100, outcomeMaxIter},
-		{1e-200, 1, outcomeDegenerate},
+		{27, 4, outcomeConverged},
+		{1e9, 5, outcomeConverged},
+		{1e30, 5, outcomeConverged},
+		{1e-200, 4, outcomeConverged},
+		{math.NaN(), 0, outcomeDegenerate},
+		{math.Inf(-1), 0, outcomeDegenerate},
 	}
 	for _, tc := range cases {
 		_, st := cubeRoot(tc.d)
 		if st.Iterations != tc.iterations || st.Outcome != tc.outcome {
 			t.Errorf("cubeRoot(%g): got %d iterations, %s; want %d, %s", tc.d, st.Iterations, st.Outcome, tc.iterations, tc.outcome)
+		}
+	}
+}
+
+// TestCubicRoot_MatchesCbrt сверяет результат с math.Cbrt на входах по всему
+// диапазону float64, включая субнормальные числа, с обоими знаками.
+func TestCubicRoot_MatchesCbrt(t *testing.T) {
+	r := rand.New(rand.NewPCG(27, 3))
+	for range 200_000 {
+		d := math.Pow(10, -323+r.Float64()*631)
+		if r.IntN(2) == 0 {
+			d = -d
+		}
+		if d == 0 || math.IsInf(d, 0) {
+			continue
+		}
+		got, st := cubeRoot(d)
+		want := math.Cbrt(d)
+		if diff := math.Abs(got-want) / math.Abs(want); diff > 1e-15 || st.Outcome != outcomeConverged || st.Iterations > 6 {
+			t.Fatalf("cubeRoot(%g) = %g after %d iterations (%s), math.Cbrt = %g, relative diff %g",
+				d, got, st.Iterations, st.Outcome, want, diff)
 		}
 	}
 }
@@ -172,33 +212,47 @@ func TestDomainMetrics(t *testing.T) {
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cubic-root?d="+d, nil))
 	}
 
-	if got := testutil.ToFloat64(m.calculations.WithLabelValues(string(outcomeConverged))); got != 1 {
-		t.Errorf("converged calculations: got %v, want 1", got)
-	}
-	if got := testutil.ToFloat64(m.calculations.WithLabelValues(string(outcomeMaxIter))); got != 1 {
-		t.Errorf("max_iter calculations: got %v, want 1", got)
+	if got := testutil.ToFloat64(m.calculations.WithLabelValues(string(outcomeConverged))); got != 2 {
+		t.Errorf("converged calculations: got %v, want 2", got)
 	}
 
 	iterations := findMetric(t, reg, "cubic_root_newton_iterations", map[string]string{}).GetHistogram()
-	if iterations.GetSampleCount() != 2 || iterations.GetSampleSum() != 8+100 {
-		t.Errorf("iterations: got count=%d sum=%v, want count=2 sum=108", iterations.GetSampleCount(), iterations.GetSampleSum())
+	if iterations.GetSampleCount() != 2 || iterations.GetSampleSum() != 4+5 {
+		t.Errorf("iterations: got count=%d sum=%v, want count=2 sum=9", iterations.GetSampleCount(), iterations.GetSampleSum())
 	}
 
-	// 27 считается точно, а 1e30 даёт ответ с ошибкой больше 100%: он
-	// записывается как 1 и не попадает в бакет SLI le=1e-12.
 	relErr := findMetric(t, reg, "cubic_root_result_relative_error", map[string]string{}).GetHistogram()
-	if relErr.GetSampleCount() != 2 || math.Abs(relErr.GetSampleSum()-1) > 1e-12 {
-		t.Errorf("relative error: got count=%d sum=%v, want count=2 sum≈1", relErr.GetSampleCount(), relErr.GetSampleSum())
+	if relErr.GetSampleCount() != 2 {
+		t.Errorf("relative error: got count=%d, want 2", relErr.GetSampleCount())
 	}
 	for _, b := range relErr.GetBucket() {
-		if b.GetUpperBound() == 1e-12 && b.GetCumulativeCount() != 1 {
-			t.Errorf("relative error ≤ 1e-12: got %d, want 1", b.GetCumulativeCount())
+		if b.GetUpperBound() == 1e-12 && b.GetCumulativeCount() != 2 {
+			t.Errorf("relative error ≤ 1e-12: got %d, want 2", b.GetCumulativeCount())
 		}
 	}
 
 	magnitude := findMetric(t, reg, "cubic_root_input_magnitude_log10", map[string]string{}).GetHistogram()
 	if want := math.Log10(27) + 30; magnitude.GetSampleCount() != 2 || math.Abs(magnitude.GetSampleSum()-want) > 1e-9 {
 		t.Errorf("input magnitude: got count=%d sum=%v, want count=2 sum=%v", magnitude.GetSampleCount(), magnitude.GetSampleSum(), want)
+	}
+}
+
+// TestNonConverged_Returns500: если вычисление не сошлось, клиент получает 500,
+// а не число, которое не отличить от верного. Ошибка видна в метриках.
+func TestNonConverged_Returns500(t *testing.T) {
+	h, reg, m := newTestHandlerWithCalc(testAPIConfig, notConverging)
+
+	rr := get(h, "/cubic-root?d=1e30")
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d, want 500", rr.Code)
+	}
+	if got := testutil.ToFloat64(m.calculations.WithLabelValues(string(outcomeMaxIter))); got != 1 {
+		t.Errorf("max_iter calculations: got %v, want 1", got)
+	}
+	// Ответ с ошибкой больше 100% записывается как 1 и не попадает в бакет SLI.
+	relErr := findMetric(t, reg, "cubic_root_result_relative_error", map[string]string{}).GetHistogram()
+	if relErr.GetSampleCount() != 1 || relErr.GetSampleSum() != 1 {
+		t.Errorf("relative error: got count=%d sum=%v, want count=1 sum=1", relErr.GetSampleCount(), relErr.GetSampleSum())
 	}
 }
 

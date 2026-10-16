@@ -99,7 +99,7 @@ HTTP-слой (golden signals) снимает middleware со всех запр�
 
 | метрика | тип | labels | что показывает |
 |---|---|---|---|
-| `cubic_root_calculations_total` | counter | `outcome` = `converged` / `max_iter` / `degenerate` / `trivial` | выполненные вычисления и чем они закончились; `max_iter` и `degenerate` — ответы, которым нельзя доверять, хотя HTTP отдаёт 200 |
+| `cubic_root_calculations_total` | counter | `outcome` = `converged` / `max_iter` / `degenerate` / `trivial` | выполненные вычисления и чем они закончились; на `max_iter` и `degenerate` сервис отвечает 500 |
 | `cubic_root_newton_iterations` | histogram | — | число шагов метода Ньютона на одно вычисление: стоимость работы |
 | `cubic_root_result_relative_error` | histogram | — | относительная ошибка `\|z³−d\|/\|d\|`, correctness SLI по бакету `le="1e-12"`; ошибка от 100% записывается как 1 |
 | `cubic_root_input_magnitude_log10` | histogram | — | порядок величины `log10\|d\|`: профиль нагрузки |
@@ -148,7 +148,7 @@ Fault injection: `cubic_root_injected_faults_total{type}` (`error` / `latency`) 
 | латентность | 99% успешных запросов быстрее 10ms | бакет `le="0.01"` той же гистограммы |
 | корректность | 99.99% результатов с относительной ошибкой ≤ 1e-12 | бакет `le="1e-12"` у `cubic_root_result_relative_error` |
 
-Правила лежат в `observability/vmalert/rules/cubic-root.yml`: recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (ответы, которым нельзя доверять) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root SLO`.
+Правила лежат в `observability/vmalert/rules/cubic-root.yml`: recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (вычисление не сошлось, клиент получил 500) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root SLO`.
 
 Порог латентности выбран по измерениям: при 50 VU p99 сервера около 0.2ms, с `CALC_DELAY=2ms ±1ms` около 5ms. В сценарии `spike` (3000 VU, около 22 000 RPS) процесс упирается в CPU: p99 задержки планировщика доходит до 0.8s, и быстрее 10ms отвечают только 89% запросов, то есть бюджет горит.
 

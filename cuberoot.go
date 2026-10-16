@@ -11,7 +11,8 @@ const (
 	outcomeConverged outcome = "converged"
 	// outcomeMaxIter — итерация упёрлась в лимит шагов, результат не гарантирован.
 	outcomeMaxIter outcome = "max_iter"
-	// outcomeDegenerate — z обнулился или ушёл в Inf, итерация прервана.
+	// outcomeDegenerate — вход не конечное число (NaN, ±Inf): считать нечего,
+	// результат бессмыслен.
 	outcomeDegenerate outcome = "degenerate"
 	// outcomeTrivial — d = 0, считать нечего.
 	outcomeTrivial outcome = "trivial"
@@ -32,32 +33,50 @@ type calcStats struct {
 }
 
 // cubeRoot считает кубический корень из x методом Ньютона.
+//
+// Итерация идёт не по самому x, а по его мантиссе: x = m·2^e, где e кратно 3
+// и m ∈ [0.5, 4), тогда ∛x = ∛m·2^(e/3). Поэтому число шагов не зависит от
+// порядка x, промежуточные значения не переполняются и не уходят в ноль, а
+// масштабирование обратно через math.Ldexp точное. Раньше итерация стартовала
+// с x/3 и останавливалась по абсолютной точности 1e-10: на |x| ≥ ~1e27 ей не
+// хватало 100 шагов, на |x| ≤ ~1e-13 абсолютный критерий был слишком грубым,
+// и в обоих случаях сервис отдавал неверный результат.
 func cubeRoot(x float64) (float64, calcStats) {
-	if x == 0 {
+	switch {
+	case x == 0:
 		return 0, calcStats{Outcome: outcomeTrivial}
+	case math.IsNaN(x) || math.IsInf(x, 0):
+		return x, calcStats{Outcome: outcomeDegenerate}
+	case x < 0:
+		z, stats := cubeRoot(-x)
+		return -z, stats
 	}
 
 	const (
-		precision = 1e-10
-		maxIter   = 100
+		// relTolerance — относительная точность остановки: несколько ulp
+		// float64. Соседние float64 отличаются на ~2.2e-16, так что колебание
+		// между ними тоже считается сходимостью.
+		relTolerance = 1e-15
+		maxIter      = 100
 	)
 
-	z := x / 3
-	for i := 0; i < maxIter; i++ {
-		// z может занулиться или уйти в Inf на экстремально малых/больших
-		// входах — в этом случае x/(z*z) даёт Inf/NaN и итерация перестаёт
-		// сходиться. Прерываемся, чтобы цикл всегда завершался.
-		if z == 0 || math.IsInf(z, 0) {
-			return z, calcStats{Iterations: i, Outcome: outcomeDegenerate}
+	frac, exp := math.Frexp(x) // x = frac·2^exp, frac ∈ [0.5, 1)
+	shift := (exp%3 + 3) % 3
+	m := math.Ldexp(frac, shift) // m ∈ [0.5, 4)
+	exp -= shift                 // теперь exp кратно 3
+
+	// Линейное приближение ∛m на [0.5, 4) с ошибкой до ~7%: дальше метод
+	// Ньютона сходится квадратично, за 3–5 шагов.
+	z := 0.7441 + 0.2268*m
+	for i := 1; i <= maxIter; i++ {
+		next := (2*z + m/(z*z)) / 3
+		if math.Abs(next-z) <= relTolerance*next {
+			return math.Ldexp(next, exp/3), calcStats{Iterations: i, Outcome: outcomeConverged}
 		}
-		nextZ := (2*z + x/(z*z)) / 3
-		if math.Abs(nextZ-z) < precision {
-			return z, calcStats{Iterations: i + 1, Outcome: outcomeConverged}
-		}
-		z = nextZ
+		z = next
 	}
 
-	return z, calcStats{Iterations: maxIter, Outcome: outcomeMaxIter}
+	return math.Ldexp(z, exp/3), calcStats{Iterations: maxIter, Outcome: outcomeMaxIter}
 }
 
 // relativeError возвращает |z³−d|/|d|, посчитанную как |z²/d·z − 1|: так
