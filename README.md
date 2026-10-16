@@ -31,8 +31,8 @@
   run-bin          Run binary
   test-load        Run load test using k6 (stages: ramp-up 30s → load 240s → ramp-down 30s)
   test-load-smoke  Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
-  run-jaeger       Start Jaeger all-in-one (OTLP HTTP :4318, UI :16686)
-  run-traced       Run binary with tracing enabled (requires Jaeger: make run-jaeger)
+  run-tempo        Start Tempo for local tracing (OTLP HTTP :4318, API :3200)
+  run-traced       Run binary with tracing enabled (requires Tempo: make run-tempo)
   obs-up           Start full observability stack (Jaeger + Prometheus + Grafana)
   obs-down         Stop observability stack
 ```

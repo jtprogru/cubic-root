@@ -5,7 +5,7 @@ IMAGE     ?= ghcr.io/jtprogru/cubic-root:latest
 .DEFAULT_GOAL := help
 
 .PHONY: help deps-install tidy deps-update build-bin build-docker push-docker tests test-unit \
-	test-bench run-bin check-k6 test-load test-load-smoke run-jaeger run-traced obs-up obs-down
+	test-bench run-bin check-k6 test-load test-load-smoke run-tempo run-traced obs-up obs-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -53,10 +53,10 @@ test-load: check-k6 ## Run load test using k6 (stages: ramp-up 30s → load 240s
 test-load-smoke: check-k6 ## Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
 	k6 run --vus 10 --duration 10s --env BASE_URL=$(BASE_URL) $(K6_SCRIPT)
 
-run-jaeger: ## Start Jaeger all-in-one (OTLP HTTP :4318, UI :16686)
-	docker compose up jaeger -d
+run-tempo: ## Start Tempo for local tracing (OTLP HTTP :4318, API :3200)
+	docker compose up tempo -d
 
-run-traced: build-bin ## Run binary with tracing enabled (requires Jaeger: make run-jaeger)
+run-traced: build-bin ## Run binary with tracing enabled (requires Tempo: make run-tempo)
 	PORT=8080 DEBUG=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_EXPORTER_OTLP_INSECURE=true ./bin/cubic-root
 
 obs-up: ## Start full observability stack (Jaeger + Prometheus + Grafana)
