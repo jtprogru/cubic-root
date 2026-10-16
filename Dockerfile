@@ -1,4 +1,4 @@
-FROM golang:1.25.9-alpine3.23 AS builder
+FROM golang:1.27.2-alpine3.23 AS builder
 LABEL authors="Mikhail Savin <jtprogru@gmail.com>"
 
 ARG http_port=8080
