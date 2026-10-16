@@ -8,6 +8,8 @@ import { Rate, Trend } from 'k6/metrics';
 //                   на которых видно, сходится ли алгоритм и насколько точен ответ;
 //   bad-requests  — четверть запросов невалидные: 4xx и 405 в HTTP-метриках,
 //                   cubic_root_validation_errors_total по причинам;
+//   hot-keys      — 80% запросов приходят по 1000 «горячим» значениям d,
+//                   остальные уникальны: кэш даёт hit ratio около 80%;
 //   spike         — резкий скачок с 50 до 3000 VU: saturation и восстановление.
 const SCENARIO = __ENV.SCENARIO || 'baseline';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
@@ -37,6 +39,10 @@ const scenarios = {
     stages: short,
     request: () => (Math.random() < 0.25 ? badRequest() : validRequest(uniform(1_000_000, 1_000_000_000))),
   },
+  'hot-keys': {
+    stages: short,
+    request: () => validRequest(Math.random() < HOT_SHARE ? hotKey() : uniform(1_000_000, 1_000_000_000)),
+  },
   spike: {
     stages: [
       { duration: '10s', target: 50 },
@@ -61,6 +67,9 @@ if (!scenario) {
 const errorRate = new Rate('errors');
 const wrongResults = new Rate('wrong_results');
 const cubicRootDuration = new Trend('cubic_root_duration', true);
+// cache_hits — доля ответов из кэша по заголовку X-Cache: клиентская сверка
+// с серверной метрикой cubic_root_cache_requests_total.
+const cacheHits = new Rate('cache_hits');
 
 // 400 и 405 в bad-requests ожидаемы и не должны считаться отказами.
 http.setResponseCallback(http.expectedStatuses(200, 400, 405));
@@ -83,6 +92,14 @@ export default function () {
   const ok = scenario.request();
   errorRate.add(!ok);
   sleep(Math.random() * 0.05); // случайная пауза до 50ms между запросами
+}
+
+const HOT_KEYS = 1000;
+const HOT_SHARE = 0.8;
+
+// hotKey возвращает одно из HOT_KEYS целых значений d.
+function hotKey() {
+  return (1 + Math.floor(Math.random() * HOT_KEYS)) * 1_000_000;
 }
 
 function uniform(min, max) {
@@ -110,6 +127,10 @@ function validRequest(d) {
   const correct = result !== undefined && Math.abs(result - expected) <= 1e-9 * Math.abs(expected);
   if (res.status === 200) {
     wrongResults.add(!correct);
+  }
+
+  if (res.headers['X-Cache']) {
+    cacheHits.add(res.headers['X-Cache'] === 'HIT');
   }
 
   return check(res, {
@@ -148,6 +169,7 @@ function textSummary(data) {
   const dur = m.http_req_duration;
   const rps = m.http_reqs;
   const wrong = m.wrong_results ? (m.wrong_results.values.rate * 100).toFixed(2) : '0.00';
+  const hits = m.cache_hits ? `${(m.cache_hits.values.rate * 100).toFixed(2)}%` : 'n/a';
 
   return `
 ========================================
@@ -157,6 +179,7 @@ function textSummary(data) {
   RPS            : ${rps.values.rate.toFixed(1)}
   Errors         : ${(m.errors.values.rate * 100).toFixed(2)}%
   Wrong results  : ${wrong}%
+  Cache hits     : ${hits}
 
   Latency (ms):
     median : ${dur.values.med.toFixed(2)}
