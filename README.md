@@ -31,9 +31,9 @@
   run-bin          Run binary
   test-load        Run load test using k6 (stages: ramp-up 30s → load 240s → ramp-down 30s)
   test-load-smoke  Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
-  run-tempo        Start Tempo for local tracing (OTLP HTTP :4318, API :3200)
-  run-traced       Run binary with tracing enabled (requires Tempo: make run-tempo)
-  obs-up           Start full observability stack (Tempo + Loki + Promtail + Prometheus + Grafana)
+  run-traces       Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
+  run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
+  obs-up           Start full observability stack (VictoriaMetrics + vmagent + vmalert + VictoriaLogs + Vector + VictoriaTraces + Grafana)
   obs-down         Stop observability stack
 ```
 
@@ -46,6 +46,26 @@ make build-bin
 
 go build -o bin/cubic-root main.go
 ```
+
+## Observability
+
+Локальный стек наблюдаемости собран на VictoriaMetrics и поднимается командой `make obs-up` (останавливается `make obs-down`):
+
+| компонент | роль | адрес |
+|---|---|---|
+| VictoriaMetrics | хранение метрик | http://localhost:8428/vmui |
+| vmagent | сбор метрик приложения и самого стека (`observability/vmagent/scrape.yml`) | http://localhost:8429/targets |
+| vmalert | recording rules и алерты (`observability/vmalert/rules/`) | http://localhost:8880 |
+| VictoriaLogs | хранение логов | http://localhost:9428/select/vmui |
+| Vector | доставка логов контейнера `cubic-root` в VictoriaLogs (`observability/vector/vector.yaml`) | — |
+| VictoriaTraces | хранение трейсов, приём OTLP | http://localhost:10428/select/vmui |
+| Grafana | дашборды, переходы между логами и трейсами | http://localhost:3333 |
+
+Приложение отдаёт метрики на внутреннем порту `9090`, пишет JSON-логи в stdout и отправляет трейсы по OTLP HTTP в VictoriaTraces. Доля сэмплируемых трейсов задаётся переменной `TRACES_SAMPLE_RATIO` (по умолчанию `1.0`), для нагрузочных прогонов её стоит снизить: `TRACES_SAMPLE_RATIO=0.01 make obs-up`.
+
+Дашборд приложения лежит в `observability/grafana/dashboards/cubic-root.json`, официальные дашборды компонентов стека — в папке `victoria-stack` (`observability/grafana/dashboards/victoria-stack/`).
+
+В Grafana трейсы доступны через два datasource: `VictoriaTraces` (Jaeger API, основной) и `VictoriaTraces (Tempo API)` (экспериментальный, для TraceQL и Traces Drilldown). Из лога в VictoriaLogs можно перейти в трейс по полю `trace_id`, из спана — в логи этого трейса.
 
 ## Testing
 

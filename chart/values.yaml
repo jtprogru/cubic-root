@@ -19,7 +19,9 @@ config:
 
 # Distributed tracing configuration (OpenTelemetry).
 tracing:
-  # OTLP endpoint for sending traces (e.g. http://otel-collector:4318).
+  # OTLP endpoint for sending traces. It's a base URL: the SDK appends /v1/traces.
+  # Examples: http://otel-collector:4318 (OpenTelemetry Collector),
+  # http://victoria-traces:10428/insert/opentelemetry (VictoriaTraces).
   # Leave empty to disable tracing.
   otlpEndpoint: ""
   # Use insecure (non-TLS) connection to the OTLP endpoint.

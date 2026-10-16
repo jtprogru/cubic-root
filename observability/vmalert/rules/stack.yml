@@ -1,0 +1,12 @@
+groups:
+  - name: stack
+    interval: 30s
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} ({{ $labels.instance }}) is down"
+          description: "vmagent can't scrape {{ $labels.instance }} for more than 1 minute."
