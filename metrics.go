@@ -45,6 +45,9 @@ type metrics struct {
 	cacheEvictions *prometheus.CounterVec
 	cacheHitAge    prometheus.Histogram
 	cacheCoalesced prometheus.Counter
+
+	injectedFaults        *prometheus.CounterVec
+	faultInjectionEnabled prometheus.Gauge
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -107,6 +110,15 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		Help: "Cache misses that waited for a computation already started by another request.",
 	})
 
+	m.injectedFaults = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cubic_root_injected_faults_total",
+		Help: "Faults injected into /cubic-root responses by FAULT_* settings, by type (error or latency).",
+	}, []string{"type"})
+	m.faultInjectionEnabled = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "cubic_root_fault_injection_enabled",
+		Help: "1 if fault injection is enabled, 0 otherwise.",
+	})
+
 	// Серии с нулём создаются заранее: иначе доля ошибок до первой ошибки
 	// превращается в «no data» вместо 0.
 	for _, o := range outcomes {
@@ -121,11 +133,15 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	for _, r := range []cache.EvictReason{cache.EvictCapacity, cache.EvictExpired} {
 		m.cacheEvictions.WithLabelValues(string(r))
 	}
+	for _, t := range []string{"error", "latency"} {
+		m.injectedFaults.WithLabelValues(t)
+	}
 
 	reg.MustRegister(
 		m.requestDuration, m.activeRequests, m.responseSize,
 		m.calculations, m.iterations, m.relativeError, m.inputMagnitude, m.validationErrors,
 		m.cacheRequests, m.cacheEvictions, m.cacheHitAge, m.cacheCoalesced,
+		m.injectedFaults, m.faultInjectionEnabled,
 	)
 	return m
 }

@@ -109,6 +109,10 @@ func main() {
 		"cacheTTL", cfg.API.CacheTTL,
 		"article", articleLink,
 	)
+	if f := cfg.API.Faults; f.enabled() {
+		slog.Warn("fault injection is enabled",
+			"errorRate", f.ErrorRate, "latency", f.Latency, "latencyRate", f.LatencyRate)
+	}
 	if cfg.API.CalcDelay > 0 {
 		slog.Warn("artificial calculation delay is enabled",
 			"calcDelay", cfg.API.CalcDelay, "calcDelayJitter", cfg.API.CalcDelayJitter)
@@ -158,9 +162,12 @@ func main() {
 // newPublicHandler собирает публичный listener: бизнес-API и health-пробу,
 // обёрнутые HTTP-метриками.
 func newPublicHandler(a *api) http.Handler {
+	// Сбои внедряются внутри otelhttp, чтобы попасть в серверный спан, и только
+	// в /cubic-root: /health трогать нельзя, иначе начнут падать пробы.
+	cubicRoot := injectFaults(http.HandlerFunc(a.cubicRoot), a.cfg.Faults, a.metrics)
 	routes := map[string]http.Handler{
 		"GET /health":     otelhttp.NewHandler(http.HandlerFunc(healthHandler), "/health"),
-		"GET /cubic-root": otelhttp.NewHandler(http.HandlerFunc(a.cubicRoot), "/cubic-root"),
+		"GET /cubic-root": otelhttp.NewHandler(cubicRoot, "/cubic-root"),
 	}
 	mux := http.NewServeMux()
 	for pattern, h := range routes {
