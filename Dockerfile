@@ -1,4 +1,4 @@
-FROM golang:1.27.2-alpine3.23 AS builder
+FROM golang:1.27.2-alpine3.24 AS builder
 LABEL authors="Mikhail Savin <jtprogru@gmail.com>"
 
 ARG http_port=8080
@@ -17,7 +17,7 @@ COPY . .
 RUN go build -ldflags="-w -s" -o /go/bin/cubic-root
 
 # Используем легковесный alpine образ для финального контейнера
-FROM alpine:3.23
+FROM alpine:3.24
 LABEL authors="Mikhail Savin <jtprogru@gmail.com>"
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
