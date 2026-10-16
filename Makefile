@@ -4,11 +4,21 @@ IMAGE     ?= ghcr.io/jtprogru/cubic-root:latest
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build-bin build-docker push-docker tests test-unit test-bench run-bin \
-	check-k6 test-load test-load-smoke run-jaeger run-traced obs-up obs-down
+.PHONY: help deps-install tidy deps-update build-bin build-docker push-docker tests test-unit \
+	test-bench run-bin check-k6 test-load test-load-smoke run-jaeger run-traced obs-up obs-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+deps-install: ## Download Go module dependencies
+	go mod download
+
+tidy: ## Sync go.mod and go.sum with the code
+	go mod tidy
+
+deps-update: ## Update all Go dependencies to the latest minor/patch versions
+	go get -u -t ./...
+	go mod tidy
 
 build-bin: ## Build binary
 	go build -o bin/cubic-root main.go

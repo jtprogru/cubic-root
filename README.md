@@ -19,6 +19,9 @@
 
 ```log
   help             Show available targets
+  deps-install     Download Go module dependencies
+  tidy             Sync go.mod and go.sum with the code
+  deps-update      Update all Go dependencies to the latest minor/patch versions
   build-bin        Build binary
   build-docker     Build docker image
   push-docker      Push docker image
