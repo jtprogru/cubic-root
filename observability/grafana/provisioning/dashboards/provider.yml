@@ -7,3 +7,5 @@ providers:
     editable: false
     options:
       path: /var/lib/grafana/dashboards
+      # Subdirectories become Grafana folders (victoria-stack/ → "victoria-stack").
+      foldersFromFilesStructure: true
