@@ -29,7 +29,7 @@
   test-unit        Run unit tests
   test-bench       Run benchmarks
   run-bin          Run binary
-  test-load        Run load test using k6 (stages: ramp-up 30s → load 240s → ramp-down 30s)
+  test-load        Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|spike (see k6/load.js)
   test-load-smoke  Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
   run-traces       Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
   run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
@@ -60,6 +60,16 @@ HTTP-слой (golden signals) снимает middleware со всех запр�
 | `http_server_response_body_size_bytes` | histogram | `http_route` | размер ответов |
 
 `http_route` — паттерн маршрута без метода (`/cubic-root`, `/health`) или `unmatched` для 404 и 405. Нестандартные HTTP-методы записываются как `_OTHER`. Так ни путь, ни метод из запроса не могут породить новые серии.
+
+Доменные метрики описывают работу сервиса, которую HTTP-слой не видит:
+
+| метрика | тип | labels | что показывает |
+|---|---|---|---|
+| `cubic_root_calculations_total` | counter | `outcome` = `converged` / `max_iter` / `degenerate` / `trivial` | выполненные вычисления и чем они закончились; `max_iter` и `degenerate` — ответы, которым нельзя доверять, хотя HTTP отдаёт 200 |
+| `cubic_root_newton_iterations` | histogram | — | число шагов метода Ньютона на одно вычисление: стоимость работы |
+| `cubic_root_result_relative_error` | histogram | — | относительная ошибка `\|z³−d\|/\|d\|`, correctness SLI по бакету `le="1e-12"`; ошибка от 100% записывается как 1 |
+| `cubic_root_input_magnitude_log10` | histogram | — | порядок величины `log10\|d\|`: профиль нагрузки |
+| `cubic_root_validation_errors_total` | counter | `reason` = `missing` / `not_a_number` / `non_finite` | из чего состоят 400-е ответы |
 
 Рантайм и сборка: стандартные `go_*` и `process_*`, а также `go_sched_latencies_seconds` (сколько горутина ждёт CPU), `go_sync_mutex_wait_total_seconds_total` (ожидание на мьютексах), `go_cpu_classes_*` (разбивка CPU, в том числе доля GC) и `cubic_root_build_info{version, revision}`.
 
@@ -115,6 +125,17 @@ BenchmarkCubicRootHandler-10    	  491019	      2303 ns/op
 PASS
 ok  	github.com/jtprogru/cubic-root	4.088s
 ```
+
+Нагрузочные тесты на k6 запускаются через `make test-load`, профиль выбирается переменной `SCENARIO`:
+
+| сценарий | нагрузка | что подсвечивает |
+|---|---|---|
+| `baseline` (по умолчанию) | разгон до 3500 VU, `d` равномерно в [1e6, 1e9] | latency и saturation под нагрузкой |
+| `wide-range` | 50 VU, `\|d\|` log-uniform в [1e-20, 1e40] с обоими знаками | точность и сходимость алгоритма: k6 сверяет ответ с `Math.cbrt` |
+| `bad-requests` | 50 VU, четверть запросов невалидные или POST | 4xx/405 в HTTP-метриках и причины в `cubic_root_validation_errors_total` |
+| `spike` | скачок с 50 до 3000 VU и обратно | saturation и восстановление |
+
+Например: `make test-load SCENARIO=wide-range`. Для длинных прогонов стоит снизить долю трейсов: `TRACES_SAMPLE_RATIO=0.01 make obs-up`.
 
 Для тестирования производительности можно использовать утилиту `wrk`. Пример запуска:
 

@@ -1,5 +1,6 @@
 BASE_URL  ?= http://localhost:8080
 K6_SCRIPT ?= k6/load.js
+SCENARIO  ?= baseline
 IMAGE     ?= ghcr.io/jtprogru/cubic-root:latest
 
 .DEFAULT_GOAL := help
@@ -47,11 +48,11 @@ run-bin: build-bin ## Run binary
 check-k6:
 	@command -v k6 >/dev/null 2>&1 || { echo "k6 is not installed: brew install k6"; exit 1; }
 
-test-load: check-k6 ## Run load test using k6 (stages: ramp-up 30s → load 240s → ramp-down 30s)
-	k6 run --env BASE_URL=$(BASE_URL) $(K6_SCRIPT)
+test-load: check-k6 ## Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|spike (see k6/load.js)
+	k6 run --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) $(K6_SCRIPT)
 
 test-load-smoke: check-k6 ## Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
-	k6 run --vus 10 --duration 10s --env BASE_URL=$(BASE_URL) $(K6_SCRIPT)
+	k6 run --vus 10 --duration 10s --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) $(K6_SCRIPT)
 
 run-traces: ## Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
 	docker compose up victoriatraces -d
