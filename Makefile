@@ -5,12 +5,16 @@ SCENARIO  ?= baseline
 # Images used to validate observability configs; keep in sync with compose.yaml.
 VM_VERSION   ?= v1.154.0
 VECTOR_IMAGE ?= timberio/vector:0.59.0-alpine
+
+# Validation of rendered Helm manifests, VictoriaMetrics Operator CRDs included.
+KUBECONFORM_IMAGE ?= ghcr.io/yannh/kubeconform:v0.8.0
+CRD_SCHEMAS       ?= https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
 IMAGE     ?= ghcr.io/jtprogru/cubic-root:latest
 
 .DEFAULT_GOAL := help
 
 .PHONY: help deps-install tidy deps-update build-bin build-docker push-docker tests test-unit \
-	test-bench run-bin check-k6 test-load test-load-smoke run-traces run-traced obs-up obs-down obs-check
+	test-bench run-bin check-k6 test-load test-load-smoke run-traces run-traced obs-up obs-down obs-check chart-check
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -82,6 +86,14 @@ obs-check: ## Validate observability configs: compose, vmalert rules and their u
 		unittest --files='/repo/observability/vmalert/tests/*.yml'
 	docker run --rm -v "$(CURDIR)/observability/vector/vector.yaml:/etc/vector/vector.yaml:ro" $(VECTOR_IMAGE) \
 		validate --no-environment /etc/vector/vector.yaml
+
+chart-check: ## Lint the Helm chart and validate rendered manifests with every feature enabled
+	helm lint chart
+	helm template cubic-root chart \
+		--set monitoring.vmServiceScrape.enabled=true --set monitoring.vmRule.enabled=true \
+		--set networkPolicy.enabled=true --set ingress.enabled=true --set autoscaling.enabled=true \
+		| docker run --rm -i $(KUBECONFORM_IMAGE) -strict -summary \
+			-schema-location default -schema-location '$(CRD_SCHEMAS)' -
 
 obs-down: ## Stop observability stack
 	docker compose down

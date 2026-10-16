@@ -1,0 +1,23 @@
+{{- if .Values.monitoring.vmServiceScrape.enabled }}
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMServiceScrape
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.vmServiceScrape.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # job is taken from the Service label app.kubernetes.io/name, i.e. "cubic-root"
+  # unless nameOverride is set: the same value as in the local stack, so the
+  # rules in files/vmrules and the dashboards work unchanged.
+  jobLabel: app.kubernetes.io/name
+  selector:
+    matchLabels:
+      {{- include "chart.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.monitoring.vmServiceScrape.interval }}
+{{- end }}

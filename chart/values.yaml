@@ -83,6 +83,24 @@ service:
   # API port so metrics are not reachable through the Ingress.
   metricsPort: 9090
 
+# Integration with VictoriaMetrics Operator (operator.victoriametrics.com CRDs must
+# be installed in the cluster).
+monitoring:
+  # VMServiceScrape: vmagent managed by the operator scrapes /metrics on the
+  # metrics port. The job label becomes "cubic-root" (the chart name), which the
+  # rules below rely on; keep nameOverride empty or adjust the rules.
+  vmServiceScrape:
+    enabled: false
+    interval: 15s
+    # Extra labels, e.g. to match the selector of your VMAgent.
+    labels: {}
+  # VMRule with SLI recording rules and SLO burn-rate alerts from
+  # files/vmrules/cubic-root.yml.
+  vmRule:
+    enabled: false
+    # Extra labels, e.g. to match the selector of your VMAlert.
+    labels: {}
+
 # NetworkPolicy restricts who can reach the pod. Disabled by default because it
 # requires a CNI that enforces NetworkPolicy; enable in clusters that support it.
 networkPolicy:

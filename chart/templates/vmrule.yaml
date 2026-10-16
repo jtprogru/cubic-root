@@ -1,0 +1,14 @@
+{{- if .Values.monitoring.vmRule.enabled }}
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: {{ include "chart.fullname" . }}
+  labels:
+    {{- include "chart.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.vmRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  # SLI recording rules and SLO alerts; the same file is used by vmalert in compose.yaml.
+{{ .Files.Get "files/vmrules/cubic-root.yml" | indent 2 }}
+{{- end }}
