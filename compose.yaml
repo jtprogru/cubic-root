@@ -100,7 +100,12 @@ services:
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # Keeps downloaded plugins across `make obs-down` / `make obs-up`.
+      - grafana-plugins:/var/lib/grafana/plugins
     depends_on:
       - victoriametrics
       - victorialogs
       - victoriatraces
+
+volumes:
+  grafana-plugins:
