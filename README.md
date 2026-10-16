@@ -29,7 +29,7 @@
   test-unit        Run unit tests
   test-bench       Run benchmarks
   run-bin          Run binary
-  test-load        Run load test using k6 (stages: ramp-up 30s → load 240s → ramp-down 30s)
+  test-load        Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|spike (see k6/load.js)
   test-load-smoke  Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
   run-traces       Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
   run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
@@ -125,6 +125,17 @@ BenchmarkCubicRootHandler-10    	  491019	      2303 ns/op
 PASS
 ok  	github.com/jtprogru/cubic-root	4.088s
 ```
+
+Нагрузочные тесты на k6 запускаются через `make test-load`, профиль выбирается переменной `SCENARIO`:
+
+| сценарий | нагрузка | что подсвечивает |
+|---|---|---|
+| `baseline` (по умолчанию) | разгон до 3500 VU, `d` равномерно в [1e6, 1e9] | latency и saturation под нагрузкой |
+| `wide-range` | 50 VU, `\|d\|` log-uniform в [1e-20, 1e40] с обоими знаками | точность и сходимость алгоритма: k6 сверяет ответ с `Math.cbrt` |
+| `bad-requests` | 50 VU, четверть запросов невалидные или POST | 4xx/405 в HTTP-метриках и причины в `cubic_root_validation_errors_total` |
+| `spike` | скачок с 50 до 3000 VU и обратно | saturation и восстановление |
+
+Например: `make test-load SCENARIO=wide-range`. Для длинных прогонов стоит снизить долю трейсов: `TRACES_SAMPLE_RATIO=0.01 make obs-up`.
 
 Для тестирования производительности можно использовать утилиту `wrk`. Пример запуска:
 
