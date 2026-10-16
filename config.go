@@ -27,6 +27,18 @@ type apiConfig struct {
 	// расчёт, чтобы эффект кэша был виден на метриках.
 	CalcDelay       time.Duration
 	CalcDelayJitter time.Duration
+	// Faults — инъекция сбоев в /cubic-root для экспериментов с SLO.
+	Faults faultConfig
+}
+
+// faultConfig — инъекция сбоев. По умолчанию всё выключено.
+type faultConfig struct {
+	// ErrorRate — доля запросов, получающих 500.
+	ErrorRate float64
+	// Latency — добавочная задержка, LatencyRate — доля запросов, которые её
+	// получают: так появляется хвост латентности, а не сдвиг всего распределения.
+	Latency     time.Duration
+	LatencyRate float64
 }
 
 // loadConfig читает конфигурацию и возвращает все ошибки разом, чтобы
@@ -43,6 +55,11 @@ func loadConfig() (config, error) {
 			CacheTTL:        p.nonNegativeDuration("CACHE_TTL", 5*time.Minute),
 			CalcDelay:       p.nonNegativeDuration("CALC_DELAY", 0),
 			CalcDelayJitter: p.nonNegativeDuration("CALC_DELAY_JITTER", 0),
+			Faults: faultConfig{
+				ErrorRate:   p.ratio("FAULT_ERROR_RATE"),
+				Latency:     p.nonNegativeDuration("FAULT_LATENCY", 0),
+				LatencyRate: p.ratio("FAULT_LATENCY_RATE"),
+			},
 		},
 	}
 	return cfg, errors.Join(p.errs...)
@@ -94,6 +111,20 @@ func (p *envParser) nonNegativeDuration(name string, def time.Duration) time.Dur
 		return def
 	}
 	return d
+}
+
+// ratio читает долю от 0 до 1, по умолчанию 0.
+func (p *envParser) ratio(name string) float64 {
+	v := os.Getenv(name)
+	if v == "" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || !(f >= 0 && f <= 1) {
+		p.fail(name, v, "must be a ratio between 0 and 1")
+		return 0
+	}
+	return f
 }
 
 func (p *envParser) boolOrFalse(name string) bool {

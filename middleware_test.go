@@ -142,6 +142,8 @@ func TestMetricsLint(t *testing.T) {
 		"cubic_root_cache_coalesced_total",
 		"cubic_root_cache_entries",
 		"cubic_root_cache_capacity_entries",
+		"cubic_root_injected_faults_total",
+		"cubic_root_fault_injection_enabled",
 	)
 	if err != nil {
 		t.Fatalf("lint: %v", err)

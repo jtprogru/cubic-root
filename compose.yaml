@@ -19,6 +19,11 @@ services:
       - CACHE_TTL=${CACHE_TTL:-5m}
       - CALC_DELAY=${CALC_DELAY:-0s}
       - CALC_DELAY_JITTER=${CALC_DELAY_JITTER:-0s}
+      # Fault injection into /cubic-root, off by default, e.g.
+      # FAULT_ERROR_RATE=0.03 make obs-up, FAULT_LATENCY=50ms FAULT_LATENCY_RATE=0.2 make obs-up
+      - FAULT_ERROR_RATE=${FAULT_ERROR_RATE:-0}
+      - FAULT_LATENCY=${FAULT_LATENCY:-0s}
+      - FAULT_LATENCY_RATE=${FAULT_LATENCY_RATE:-0}
     depends_on:
       victoriatraces:
         condition: service_started

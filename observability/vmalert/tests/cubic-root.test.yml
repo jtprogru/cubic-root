@@ -1,0 +1,160 @@
+# Unit tests for observability/vmalert/rules/cubic-root.yml.
+# Run: make obs-check (or vmalert-tool unittest --files=observability/vmalert/tests/*.yml)
+rule_files:
+  - ../rules/cubic-root.yml
+
+evaluation_interval: 30s
+group_eval_order:
+  - cubic-root-sli
+  - cubic-root-slo
+
+tests:
+  - name: 5% of 5xx burns the availability budget fast and slow
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="cubic-root", http_route="/cubic-root", http_request_method="GET", http_response_status_code="200"}'
+        values: '0+6000x90'
+      - series: 'http_server_request_duration_seconds_count{job="cubic-root", http_route="/cubic-root", http_request_method="GET", http_response_status_code="500"}'
+        values: '0+300x90'
+    metricsql_expr_test:
+      - expr: job:cubic_root_availability_errors:ratio_rate1h
+        eval_time: 60m
+        exp_samples:
+          - labels: '{__name__="job:cubic_root_availability_errors:ratio_rate1h", job="cubic-root"}'
+            value: 0.04761904761904
+    alert_rule_test:
+      - eval_time: 60m
+        groupname: cubic-root-slo
+        alertname: CubicRootAvailabilityBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              job: cubic-root
+              severity: critical
+              slo: availability
+            exp_annotations:
+              summary: "Availability SLO error budget burns 14.4x faster than allowed"
+              description: 'SLO: 99.9% of /cubic-root requests are answered without 5xx. Over the last 1h the bad share is 4.762% (threshold 0.0144, 14.4x the 0.001 budget); the 5m window confirms it is still happening. Check 5xx in the Golden signals row and error logs in VictoriaLogs ({service="cubic-root"} level:(ERROR OR WARN)).'
+      - eval_time: 60m
+        groupname: cubic-root-slo
+        alertname: CubicRootAvailabilityBudgetBurnSlow
+        exp_alerts:
+          - exp_labels:
+              job: cubic-root
+              severity: warning
+              slo: availability
+            exp_annotations:
+              summary: "Availability SLO error budget burns 6x faster than allowed"
+              description: 'SLO: 99.9% of /cubic-root requests are answered without 5xx. Over the last 6h the bad share is 4.762% (threshold 0.006, 6x the 0.001 budget); the 30m window confirms it is still happening. Check 5xx in the Golden signals row and error logs in VictoriaLogs ({service="cubic-root"} level:(ERROR OR WARN)).'
+      - eval_time: 60m
+        groupname: cubic-root-slo
+        alertname: CubicRootLatencyBudgetBurnFast
+        exp_alerts: []
+
+  - name: no errors means a zero error ratio, not missing data, and no alerts
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="cubic-root", http_route="/cubic-root", http_request_method="GET", http_response_status_code="200"}'
+        values: '0+6000x60'
+      - series: 'http_server_request_duration_seconds_bucket{job="cubic-root", http_route="/cubic-root", http_request_method="GET", http_response_status_code="200", le="0.01"}'
+        values: '0+6000x60'
+    metricsql_expr_test:
+      - expr: job:cubic_root_availability_errors:ratio_rate5m
+        eval_time: 30m
+        exp_samples:
+          - labels: '{__name__="job:cubic_root_availability_errors:ratio_rate5m", job="cubic-root"}'
+            value: 0
+      - expr: job:cubic_root_latency_slow:ratio_rate5m
+        eval_time: 30m
+        exp_samples:
+          - labels: '{__name__="job:cubic_root_latency_slow:ratio_rate5m", job="cubic-root"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: cubic-root-slo
+        alertname: CubicRootAvailabilityBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 30m
+        groupname: cubic-root-slo
+        alertname: CubicRootLatencyBudgetBurnFast
+        exp_alerts: []
+
+  - name: 20% of requests slower than 10ms burn the latency budget
+    interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{job="cubic-root", http_route="/cubic-root", http_request_method="GET", http_response_status_code="200"}'
+        values: '0+6000x60'
+      - series: 'http_server_request_duration_seconds_bucket{job="cubic-root", http_route="/cubic-root", http_request_method="GET", http_response_status_code="200", le="0.01"}'
+        values: '0+4800x60'
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: cubic-root-slo
+        alertname: CubicRootLatencyBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              job: cubic-root
+              severity: critical
+              slo: latency
+            exp_annotations:
+              summary: "Latency SLO error budget burns 14.4x faster than allowed"
+              description: 'SLO: 99% of successful /cubic-root requests are faster than 10ms. Over the last 1h the bad share is 20% (threshold 0.144, 14.4x the 0.01 budget); the 5m window confirms it is still happening. Check the latency heatmap and scheduler latency: CPU saturation shows up there first.'
+      - eval_time: 30m
+        groupname: cubic-root-slo
+        alertname: CubicRootAvailabilityBudgetBurnFast
+        exp_alerts: []
+
+  - name: wrong results burn the correctness budget and open a ticket
+    interval: 1m
+    input_series:
+      - series: 'cubic_root_result_relative_error_count{job="cubic-root"}'
+        values: '0+100x30'
+      - series: 'cubic_root_result_relative_error_bucket{job="cubic-root", le="1e-12"}'
+        values: '0+90x30'
+      - series: 'cubic_root_calculations_total{job="cubic-root", outcome="max_iter"}'
+        values: '0+10x30'
+      - series: 'cubic_root_calculations_total{job="cubic-root", outcome="converged"}'
+        values: '0+90x30'
+    metricsql_expr_test:
+      - expr: job:cubic_root_calculations_bad:ratio_rate5m
+        eval_time: 20m
+        exp_samples:
+          - labels: '{__name__="job:cubic_root_calculations_bad:ratio_rate5m", job="cubic-root"}'
+            value: 0.1
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: cubic-root-slo
+        alertname: CubicRootCorrectnessBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              job: cubic-root
+              severity: critical
+              slo: correctness
+            exp_annotations:
+              summary: "Correctness SLO error budget burns 14.4x faster than allowed"
+              description: 'SLO: 99.99% of computed results have relative error |z^3-d|/|d| <= 1e-12. Over the last 1h the bad share is 10% (threshold 0.00144, 14.4x the 0.0001 budget); the 5m window confirms it is still happening. Check calculations by outcome and the relative error heatmap in the Work row.'
+      - eval_time: 20m
+        groupname: cubic-root-slo
+        alertname: CubicRootNonConvergedResults
+        exp_alerts:
+          - exp_labels:
+              job: cubic-root
+              severity: warning
+            exp_annotations:
+              summary: "cubic-root returned results that did not converge"
+              description: '100 computations in the last 10 minutes ended with max_iter or degenerate. Clients got HTTP 200 with a result that cannot be trusted. Inputs are in WARN logs: {service="cubic-root"} level:WARN.'
+
+  - name: enabled fault injection is reported
+    interval: 1m
+    input_series:
+      - series: 'cubic_root_fault_injection_enabled{job="cubic-root"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        groupname: cubic-root-slo
+        alertname: CubicRootFaultInjectionEnabled
+        exp_alerts:
+          - exp_labels:
+              job: cubic-root
+              severity: info
+            exp_annotations:
+              summary: "Fault injection is enabled in cubic-root"
+              description: 'FAULT_* settings are active: errors and latency are injected on purpose, SLO alerts may fire because of the experiment.'

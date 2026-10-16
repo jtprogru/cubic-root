@@ -26,6 +26,9 @@
 | `CACHE_TTL` | `5m` | время жизни записи кэша; `0` — без устаревания |
 | `CALC_DELAY` | `0` | искусственная задержка вычисления на промахе кэша, для экспериментов |
 | `CALC_DELAY_JITTER` | `0` | равномерный разброс `±` вокруг `CALC_DELAY` |
+| `FAULT_ERROR_RATE` | `0` | доля запросов к `/cubic-root`, получающих 500 (fault injection) |
+| `FAULT_LATENCY` | `0` | добавочная задержка для fault injection |
+| `FAULT_LATENCY_RATE` | `0` | доля запросов, получающих `FAULT_LATENCY` |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` и другие `OTEL_*` | — | экспорт трейсов, стандартные переменные OpenTelemetry SDK |
 
 ### Кэш
@@ -64,6 +67,7 @@
   run-traces       Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
   run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
   obs-up           Start full observability stack (VictoriaMetrics + vmagent + vmalert + VictoriaLogs + Vector + VictoriaTraces + Grafana)
+  obs-check        Validate observability configs: compose, vmalert rules and their unit tests, Vector
   obs-down         Stop observability stack
 ```
 
@@ -112,6 +116,8 @@ HTTP-слой (golden signals) снимает middleware со всех запр�
 | `cubic_root_cache_hit_age_seconds` | histogram | — | возраст записи в момент попадания, для подбора `CACHE_TTL` |
 | `cubic_root_cache_coalesced_total` | counter | — | промахи, дождавшиеся чужого вычисления |
 
+Fault injection: `cubic_root_injected_faults_total{type}` (`error` / `latency`) и `cubic_root_fault_injection_enabled` (1, если включена).
+
 Рантайм и сборка: стандартные `go_*` и `process_*`, а также `go_sched_latencies_seconds` (сколько горутина ждёт CPU), `go_sync_mutex_wait_total_seconds_total` (ожидание на мьютексах), `go_cpu_classes_*` (разбивка CPU, в том числе доля GC) и `cubic_root_build_info{version, revision}`.
 
 ## Observability
@@ -133,6 +139,22 @@ HTTP-слой (golden signals) снимает middleware со всех запр�
 Дашборд приложения лежит в `observability/grafana/dashboards/cubic-root.json`, официальные дашборды компонентов стека — в папке `victoria-stack` (`observability/grafana/dashboards/victoria-stack/`).
 
 В Grafana трейсы доступны через два datasource: `VictoriaTraces` (Jaeger API, основной) и `VictoriaTraces (Tempo API)` (экспериментальный, для TraceQL и Traces Drilldown). Из лога в VictoriaLogs можно перейти в трейс по полю `trace_id`, из спана — в логи этого трейса.
+
+### SLO и алерты
+
+| SLO | цель за 30 дней | SLI |
+|---|---|---|
+| доступность | 99.9% запросов к `/cubic-root` без 5xx | `http_server_request_duration_seconds_count` по коду ответа |
+| латентность | 99% успешных запросов быстрее 10ms | бакет `le="0.01"` той же гистограммы |
+| корректность | 99.99% результатов с относительной ошибкой ≤ 1e-12 | бакет `le="1e-12"` у `cubic_root_result_relative_error` |
+
+Правила лежат в `observability/vmalert/rules/cubic-root.yml`: recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (ответы, которым нельзя доверять) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root SLO`.
+
+Порог латентности выбран по измерениям: при 50 VU p99 сервера около 0.2ms, с `CALC_DELAY=2ms ±1ms` около 5ms. В сценарии `spike` (3000 VU, около 22 000 RPS) процесс упирается в CPU: p99 задержки планировщика доходит до 0.8s, и быстрее 10ms отвечают только 89% запросов, то есть бюджет горит.
+
+### Fault injection
+
+Переменные `FAULT_*` добавляют сбои в ответы `/cubic-root`, чтобы проверять дашборды и алерты на живых ошибках: `FAULT_ERROR_RATE=0.03 make obs-up` отдаёт 3% ответов с кодом 500, `FAULT_LATENCY=50ms FAULT_LATENCY_RATE=0.2 make obs-up` замедляет каждый пятый запрос. Сбои включаются только через env, запросом их включить нельзя. `/health` они не затрагивают, иначе в Kubernetes начали бы падать пробы. Клиент, ушедший во время задержки, получает 499, а не 5xx. Инжектированные сбои видны в HTTP-метриках как обычные и отдельно в `cubic_root_injected_faults_total`.
 
 ## Testing
 

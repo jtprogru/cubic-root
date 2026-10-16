@@ -1,0 +1,17 @@
+name: Observability
+
+on: [push]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # compose file, vmalert rules (dry run + unit tests), Vector config
+      - name: Validate observability configs
+        run: make obs-check
+      - name: Validate Grafana dashboards
+        run: |
+          find observability/grafana/dashboards -name '*.json' -print0 \
+            | xargs -0 -n1 python3 -m json.tool --no-ensure-ascii > /dev/null
