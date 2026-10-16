@@ -67,6 +67,7 @@
   run-traces       Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
   run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
   obs-up           Start full observability stack (VictoriaMetrics + vmagent + vmalert + VictoriaLogs + Vector + VictoriaTraces + Grafana)
+  obs-check        Validate observability configs: compose, vmalert rules and their unit tests, Vector
   obs-down         Stop observability stack
 ```
 
@@ -138,6 +139,18 @@ Fault injection: `cubic_root_injected_faults_total{type}` (`error` / `latency`) 
 Дашборд приложения лежит в `observability/grafana/dashboards/cubic-root.json`, официальные дашборды компонентов стека — в папке `victoria-stack` (`observability/grafana/dashboards/victoria-stack/`).
 
 В Grafana трейсы доступны через два datasource: `VictoriaTraces` (Jaeger API, основной) и `VictoriaTraces (Tempo API)` (экспериментальный, для TraceQL и Traces Drilldown). Из лога в VictoriaLogs можно перейти в трейс по полю `trace_id`, из спана — в логи этого трейса.
+
+### SLO и алерты
+
+| SLO | цель за 30 дней | SLI |
+|---|---|---|
+| доступность | 99.9% запросов к `/cubic-root` без 5xx | `http_server_request_duration_seconds_count` по коду ответа |
+| латентность | 99% успешных запросов быстрее 10ms | бакет `le="0.01"` той же гистограммы |
+| корректность | 99.99% результатов с относительной ошибкой ≤ 1e-12 | бакет `le="1e-12"` у `cubic_root_result_relative_error` |
+
+Правила лежат в `observability/vmalert/rules/cubic-root.yml`: recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (ответы, которым нельзя доверять) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root SLO`.
+
+Порог латентности выбран по измерениям: при 50 VU p99 сервера около 0.2ms, с `CALC_DELAY=2ms ±1ms` около 5ms. В сценарии `spike` (3000 VU, около 22 000 RPS) процесс упирается в CPU: p99 задержки планировщика доходит до 0.8s, и быстрее 10ms отвечают только 89% запросов, то есть бюджет горит.
 
 ### Fault injection
 

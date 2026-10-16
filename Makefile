@@ -1,12 +1,16 @@
 BASE_URL  ?= http://localhost:8080
 K6_SCRIPT ?= k6/load.js
 SCENARIO  ?= baseline
+
+# Images used to validate observability configs; keep in sync with compose.yaml.
+VM_VERSION   ?= v1.154.0
+VECTOR_IMAGE ?= timberio/vector:0.59.0-alpine
 IMAGE     ?= ghcr.io/jtprogru/cubic-root:latest
 
 .DEFAULT_GOAL := help
 
 .PHONY: help deps-install tidy deps-update build-bin build-docker push-docker tests test-unit \
-	test-bench run-bin check-k6 test-load test-load-smoke run-traces run-traced obs-up obs-down
+	test-bench run-bin check-k6 test-load test-load-smoke run-traces run-traced obs-up obs-down obs-check
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -69,6 +73,15 @@ obs-up: ## Start full observability stack (VictoriaMetrics + vmagent + vmalert +
 	@echo "vmalert         → http://localhost:8880"
 	@echo "VictoriaLogs    → http://localhost:9428/select/vmui"
 	@echo "VictoriaTraces  → http://localhost:10428/select/vmui"
+
+obs-check: ## Validate observability configs: compose, vmalert rules and their unit tests, Vector
+	docker compose config --quiet
+	docker run --rm -v "$(CURDIR)/observability/vmalert:/vmalert:ro" victoriametrics/vmalert:$(VM_VERSION) \
+		-rule='/vmalert/rules/*.yml' -dryRun -loggerLevel=ERROR
+	docker run --rm -v "$(CURDIR)/observability/vmalert:/vmalert:ro" victoriametrics/vmalert-tool:$(VM_VERSION) \
+		unittest --files='/vmalert/tests/*.yml'
+	docker run --rm -v "$(CURDIR)/observability/vector/vector.yaml:/etc/vector/vector.yaml:ro" $(VECTOR_IMAGE) \
+		validate --no-environment /etc/vector/vector.yaml
 
 obs-down: ## Stop observability stack
 	docker compose down
