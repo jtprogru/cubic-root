@@ -227,11 +227,11 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "cubic-root returned results that did not converge"
+          summary: "cubic-root computations did not converge"
           description: >-
-            {{ $value | humanize }} computations in the last 10 minutes ended with max_iter or degenerate.
-            Clients got HTTP 200 with a result that cannot be trusted. Inputs are in WARN logs:
-            {service="cubic-root"} level:WARN.
+            {{ $value | humanize }} computations in the last 10 minutes ended with max_iter or degenerate,
+            clients got HTTP 500. The algorithm converges for every finite input, so this is a regression.
+            Inputs are in ERROR logs: {service="cubic-root"} level:ERROR.
       - alert: CubicRootFaultInjectionEnabled
         expr: max by (job) (cubic_root_fault_injection_enabled{job="cubic-root"}) == 1
         labels:

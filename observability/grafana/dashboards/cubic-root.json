@@ -753,7 +753,7 @@
     {
       "type": "stat",
       "title": "Bad results",
-      "description": "Share of computations that did not converge. HTTP still answers 200 for them before the fix.",
+      "description": "Share of computations that did not converge. Such requests are answered with 500.",
       "datasource": {
         "type": "victoriametrics-metrics-datasource",
         "uid": "${datasource}"
