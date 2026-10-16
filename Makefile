@@ -5,7 +5,7 @@ IMAGE     ?= ghcr.io/jtprogru/cubic-root:latest
 .DEFAULT_GOAL := help
 
 .PHONY: help deps-install tidy deps-update build-bin build-docker push-docker tests test-unit \
-	test-bench run-bin check-k6 test-load test-load-smoke run-tempo run-traced obs-up obs-down
+	test-bench run-bin check-k6 test-load test-load-smoke run-traces run-traced obs-up obs-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -53,19 +53,21 @@ test-load: check-k6 ## Run load test using k6 (stages: ramp-up 30s → load 240s
 test-load-smoke: check-k6 ## Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
 	k6 run --vus 10 --duration 10s --env BASE_URL=$(BASE_URL) $(K6_SCRIPT)
 
-run-tempo: ## Start Tempo for local tracing (OTLP HTTP :4318, API :3200)
-	docker compose up tempo -d
+run-traces: ## Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
+	docker compose up victoriatraces -d
 
-run-traced: build-bin ## Run binary with tracing enabled (requires Tempo: make run-tempo)
-	PORT=8080 DEBUG=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_EXPORTER_OTLP_INSECURE=true ./bin/cubic-root
+run-traced: build-bin ## Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
+	PORT=8080 DEBUG=true OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:10428/insert/opentelemetry/v1/traces ./bin/cubic-root
 
-obs-up: ## Start full observability stack (Tempo + Loki + Promtail + Prometheus + Grafana)
+obs-up: ## Start full observability stack (VictoriaMetrics + vmagent + vmalert + VictoriaLogs + Vector + VictoriaTraces + Grafana)
 	docker compose up -d --build
-	@echo "cubic-root  → http://localhost:8080"
-	@echo "Grafana     → http://localhost:3333 (по умолчанию admin/admin, переопределяется через GRAFANA_ADMIN_USER и GRAFANA_ADMIN_PASSWORD)"
-	@echo "Prometheus  → http://localhost:9090"
-	@echo "Tempo API   → http://localhost:3200"
-	@echo "Loki API    → http://localhost:3100"
+	@echo "cubic-root      → http://localhost:8080"
+	@echo "Grafana         → http://localhost:3333 (по умолчанию admin/admin, переопределяется через GRAFANA_ADMIN_USER и GRAFANA_ADMIN_PASSWORD)"
+	@echo "VictoriaMetrics → http://localhost:8428/vmui"
+	@echo "vmagent         → http://localhost:8429/targets"
+	@echo "vmalert         → http://localhost:8880"
+	@echo "VictoriaLogs    → http://localhost:9428/select/vmui"
+	@echo "VictoriaTraces  → http://localhost:10428/select/vmui"
 
 obs-down: ## Stop observability stack
 	docker compose down

@@ -1,0 +1,56 @@
+# Local-only API: compose uses its /health endpoint to start the app after Vector is ready.
+api:
+  enabled: true
+  address: 127.0.0.1:8686
+
+sources:
+  # Container logs via the Docker API (no access to /var/lib/docker needed).
+  # docker_logs only reads lines emitted after it attaches to a container, so the
+  # app must start after Vector (see depends_on in compose.yaml).
+  cubic_root:
+    type: docker_logs
+    include_labels:
+      - com.docker.compose.service=cubic-root
+
+  vector_metrics:
+    type: internal_metrics
+
+transforms:
+  app:
+    type: remap
+    inputs: [cubic_root]
+    source: |
+      # The app writes slog JSON: {"time":..., "level":..., "msg":..., "trace_id":..., ...}.
+      # Lift its fields to the top level; non-JSON lines (e.g. from the entrypoint) stay as is.
+      structured, err = parse_json(.message)
+      if err == null && is_object(structured) {
+        . = merge(., object!(structured))
+        if exists(.msg) { .message = del(.msg) }
+        if exists(.time) { .timestamp = del(.time) }
+      }
+      .service = .label."com.docker.compose.service"
+      del(.label)
+      del(.container_created_at)
+      del(.source_type)
+      del(.host)
+
+sinks:
+  victorialogs:
+    type: elasticsearch
+    inputs: [app]
+    endpoints: ["http://victorialogs:9428/insert/elasticsearch/"]
+    api_version: v8
+    compression: gzip
+    healthcheck:
+      enabled: false
+    query:
+      _msg_field: message
+      _time_field: timestamp
+      # Stream fields must have low cardinality. trace_id/span_id stay regular fields:
+      # VictoriaLogs searches them fast without turning every request into a new stream.
+      _stream_fields: service,container_name
+
+  prometheus:
+    type: prometheus_exporter
+    inputs: [vector_metrics]
+    address: 0.0.0.0:9598

@@ -34,12 +34,12 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "sum(rate(cubic_root_requests_total[1m]))",
           "legendFormat": "RPS"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 2,
@@ -67,12 +67,12 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "sum(rate(cubic_root_requests_total{status=~\"4..|5..\"}[1m])) / sum(rate(cubic_root_requests_total[1m]))",
           "legendFormat": "Error Rate"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 3,
@@ -100,12 +100,12 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "histogram_quantile(0.95, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "P95"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 4,
@@ -133,12 +133,12 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "cubic_root_active_requests",
           "legendFormat": "Active"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 5,
@@ -159,12 +159,12 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "rate(cubic_root_requests_total[1m])",
           "legendFormat": "{{status}}"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 6,
@@ -180,22 +180,22 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "histogram_quantile(0.50, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "P50"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "histogram_quantile(0.95, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "P95"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "histogram_quantile(0.99, sum(rate(cubic_root_request_duration_seconds_bucket[5m])) by (le))",
           "legendFormat": "P99"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 7,
@@ -211,17 +211,17 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "histogram_quantile(0.95, sum(rate(cubic_root_request_size_bytes_bucket[5m])) by (le))",
           "legendFormat": "Request P95"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "histogram_quantile(0.95, sum(rate(cubic_root_response_size_bytes_bucket[5m])) by (le))",
           "legendFormat": "Response P95"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 8,
@@ -237,12 +237,12 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" },
           "expr": "cubic_root_active_requests",
           "legendFormat": "Active"
         }
       ],
-      "datasource": { "type": "prometheus", "uid": "${datasource}" }
+      "datasource": { "type": "victoriametrics-metrics-datasource", "uid": "${datasource}" }
     },
     {
       "id": 9,
@@ -261,12 +261,14 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{container=~\"cubic-root.*\"}",
+          "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+          "expr": "{service=\"cubic-root\"}",
+          "queryType": "instant",
+          "editorMode": "code",
           "legendFormat": ""
         }
       ],
-      "datasource": { "type": "loki", "uid": "loki" }
+      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" }
     }
   ],
   "templating": {
@@ -274,7 +276,7 @@
       {
         "name": "datasource",
         "type": "datasource",
-        "query": "prometheus",
+        "query": "victoriametrics-metrics-datasource",
         "label": "Datasource",
         "hide": 0,
         "current": {}
