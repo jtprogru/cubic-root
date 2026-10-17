@@ -42,6 +42,23 @@ datasources:
       nodeGraph:
         enabled: true
 
+  # VictoriaTraces stores spans as VictoriaLogs records, so the VictoriaLogs plugin
+  # runs LogsQL over them: RED and duration quantiles by span name or attribute
+  # without a separate span-metrics generator.
+  - name: VictoriaTraces (LogsQL)
+    uid: victoriatraces-logsql
+    type: victoriametrics-logs-datasource
+    url: http://victoriatraces:10428
+    editable: false
+    jsonData:
+      derivedFields:
+        - name: TraceID
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: victoriatraces
+          url: '$${__value.raw}'
+          urlDisplayLabel: "View trace"
+
   # Experimental: Tempo-compatible API of VictoriaTraces for TraceQL and Traces Drilldown.
   - name: VictoriaTraces (Tempo API)
     uid: victoriatraces-tempo

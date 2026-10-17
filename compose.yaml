@@ -38,6 +38,9 @@ services:
       - "10428:10428" # OTLP HTTP ingestion, Jaeger/Tempo query APIs, UI at /select/vmui
     command:
       - -retentionPeriod=1d
+      # Like VictoriaMetrics, LogsQL queries hide the last 30s by default; locally
+      # spans arrive within seconds (span stats on the Traces dashboard).
+      - -search.latencyOffset=5s
   # --- Logs ---
   victorialogs:
     image: victoriametrics/victoria-logs:v1.53.0
