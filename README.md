@@ -35,7 +35,7 @@
 
 Результаты хранятся в in-memory LRU-кэше с TTL (`internal/cache`). Ключ — значение `d` после парсинга, поэтому `27`, `27.0` и `2.7e1` попадают в одну запись. Одновременные промахи по одному ключу ждут одно вычисление (singleflight). Результаты, которым нельзя доверять (`max_iter`, `degenerate`), в кэш не кладутся. Откуда взят ответ, видно по заголовку `X-Cache: HIT|MISS`.
 
-Само вычисление стоит около 230ns, поэтому без `CALC_DELAY` кэш почти не влияет на латентность, зато заметно сокращает работу. Прогон `make test-load SCENARIO=hot-keys` (50 VU, 60s, ~2000 RPS) на Apple M4 Max:
+Само вычисление стоит около 20ns (до исправления алгоритма — 230ns), поэтому без `CALC_DELAY` кэш почти не влияет на латентность, зато заметно сокращает работу. Прогон со смесью `hot-keys` (около 2000 RPS, 60s, сейчас это `make test-load SCENARIO=load MIX=hot-keys RATE=2000 DURATION=1m`) на Apple M4 Max:
 
 | конфигурация | hit ratio | вычислений/с | p50 сервера | p99 сервера |
 |---|---|---|---|---|
@@ -62,8 +62,9 @@
   test-unit        Run unit tests
   test-bench       Run benchmarks
   run-bin          Run binary
-  test-load        Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|hot-keys|spike (see k6/load.js)
-  test-load-smoke  Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
+  test-load        Run a k6 profile: SCENARIO=smoke|demo|load|stress|spike|soak|waves|breakpoint|marathon|baseline, MIX=...
+  test-load-smoke  Smoke test: 30s of mixed traffic at 50 req/s with strict thresholds
+  test-load-demo   ~3m that light up every dashboard: warm-up, steady load, spike, recovery
   run-traces       Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
   run-traced       Run binary with tracing enabled (requires VictoriaTraces: make run-traces)
   obs-up           Start full observability stack (VictoriaMetrics + vmagent + vmalert + VictoriaLogs + Vector + VictoriaTraces + Grafana)
@@ -218,19 +219,42 @@ PASS
 ok  	github.com/jtprogru/cubic-root	4.088s
 ```
 
-Нагрузочные тесты на k6 запускаются через `make test-load`, профиль выбирается переменной `SCENARIO`:
+### Нагрузочные тесты (k6)
 
-| сценарий | нагрузка | что подсвечивает |
-|---|---|---|
-| `baseline` (по умолчанию) | разгон до 3500 VU, `d` равномерно в [1e6, 1e9] | latency и saturation под нагрузкой |
-| `wide-range` | 50 VU, `\|d\|` log-uniform в [1e-20, 1e40] с обоими знаками | точность и сходимость алгоритма: k6 сверяет ответ с `Math.cbrt` |
-| `bad-requests` | 50 VU, четверть запросов невалидные или POST | 4xx/405 в HTTP-метриках и причины в `cubic_root_validation_errors_total` |
-| `hot-keys` | 50 VU, 80% запросов по 1000 «горячим» значениям | hit ratio кэша; k6 сверяет его по заголовку `X-Cache` |
-| `spike` | скачок с 50 до 3000 VU и обратно | saturation и восстановление |
+Самое быстрое: `make test-load-smoke` — 30 секунд смешанного трафика со строгими порогами. `make test-load-demo` — около трёх минут, после которых на всех дашбордах есть данные: прогрев кэша, ровная нагрузка, спайк с saturation и восстановление.
 
-Например: `make test-load SCENARIO=wide-range`. Для длинных прогонов стоит снизить долю трейсов: `TRACES_SAMPLE_RATIO=0.01 make obs-up`.
+Остальное запускается через `make test-load SCENARIO=<профиль>`. Профиль задаёт форму нагрузки, `MIX` — состав трафика, они независимы: `make test-load SCENARIO=spike MIX=hot-keys`.
 
-`make test-load` и `make test-load-smoke` отправляют клиентские метрики k6 в VictoriaMetrics через Prometheus remote write, у каждого прогона своя метка `testid`. Их показывает дашборд `cubic-root · Load test` рядом с серверными метриками той же нагрузки. Если VictoriaMetrics не запущена, выключите отправку: `make test-load K6_OUT=`.
+| профиль | форма | длительность | для чего |
+|---|---|---|---|
+| `smoke` | 50 req/s | 30s | сервис жив, мониторинг видит все виды запросов |
+| `demo` | 300 req/s, спайк до 4 500 req/s | ~3m | быстро «зажечь» все дашборды |
+| `load` | постоянные 2 000 req/s | 10m | обычный день |
+| `stress` | ступени от 750 до 6 000 req/s по 2 минуты | ~12m | где начинается деградация |
+| `spike` | 500 req/s, спайк до 6 000 req/s на минуту | ~4m | saturation и восстановление |
+| `soak` | постоянные 1 000 req/s | 1h | утечки, память, GC, TTL кэша |
+| `waves` | 1 000 req/s и спайки ×6 каждые 5 минут | 30m | переживает ли сервис повторяющиеся всплески |
+| `breakpoint` | рост до 40 000 req/s, остановка при деградации | до 10m | предел стенда |
+| `marathon` | фон 1 000 req/s весь час, сверху по очереди stress, 5 спайков до 6 000 req/s и 3 000 пользователей в закрытой модели, плюс струйки невалидных запросов и экзотических входов | 1h | всё сразу, как фон переживает соседей |
+| `baseline` (по умолчанию) | закрытая модель: разгон до 4 500 VU с паузой 0–50ms | ~7m | прежний профиль |
+
+| смесь | состав |
+|---|---|
+| `realistic` | 60% горячих ключей, 30% уникальных, 5% экзотических входов, 5% невалидных запросов и POST |
+| `uniform` | уникальные `d` в [1e6, 1e9]: кэш не помогает |
+| `hot-keys` | 80% запросов по 1000 «горячим» значениям: hit ratio около 80% |
+| `wide-range` | `\|d\|` log-uniform в [1e-20, 1e40] с обоими знаками: точность алгоритма |
+| `bad-requests` | четверть запросов невалидные или POST: 4xx и 405 |
+
+Числа переопределяются переменными: `RATE`, `DURATION`, `SPIKE_RATE`, `PERIOD`, `STEP`, `VUS`, `MAX_RATE`, `MAX_VUS`. Например, `make test-load SCENARIO=soak RATE=2000 DURATION=2h` или `make test-load SCENARIO=waves PERIOD=2m`.
+
+Почти все профили используют открытую модель (arrival-rate executors): k6 отправляет заданное число запросов в секунду независимо от того, как быстро отвечает сервис. В закрытой модели (VU с паузой) медленный сервис сам снижает себе нагрузку, и тест мягчает ровно тогда, когда сервису плохо. Закрытая модель оставлена в `baseline` и в «толпе» марафона: там каждый VU — пользователь, который ждёт ответа и думает перед следующим запросом. Если k6 не успевает отправить запрос, потому что все VU заняты, он пишет его в `dropped_iterations`: это предел генератора, а не сервиса.
+
+Каждая сводка показывает RPS, пиковое число VU, отброшенные итерации, долю неверных ответов (k6 сверяет каждый ответ с `Math.cbrt`), hit ratio кэша по заголовку `X-Cache` и результат каждого порога.
+
+`make test-load` и цели на его основе отправляют клиентские метрики k6 в VictoriaMetrics через Prometheus remote write, у каждого прогона своя метка `testid`. Их показывает дашборд `cubic-root · Load test` рядом с серверными метриками той же нагрузки, с разбивкой по одновременным сценариям k6. Если VictoriaMetrics не запущена, выключите отправку: `make test-load K6_OUT=`.
+
+Ограничения стенда. На ноутбуке (Apple M4 Max, Docker Desktop) сервис на 12 000 req/s занимает около одного ядра, а предел задают генератор и Docker Desktop. Один процесс k6 с проверкой каждого ответа выдаёт около 12–14 тысяч req/s. Проброс портов Docker Desktop, построчные debug-логи через Docker API в Vector и приём 100% трейсов при подряд идущих прогонах на таком уровне однажды надолго подвесили VM Docker. Для тяжёлых и длинных прогонов снижайте долю трейсов и выключайте debug-логи: `TRACES_SAMPLE_RATIO=0.1 DEBUG=false make obs-up`.
 
 Для тестирования производительности можно использовать утилиту `wrk`. Пример запуска:
 
