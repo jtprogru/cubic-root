@@ -9,7 +9,10 @@ K6_RW_URL ?= http://localhost:8428/api/v1/write
 K6_TESTID ?= $(SCENARIO)-$(shell date +%Y%m%d-%H%M%S)
 K6_ENV     = K6_PROMETHEUS_RW_SERVER_URL=$(K6_RW_URL) K6_PROMETHEUS_RW_PUSH_INTERVAL=5s \
 	K6_PROMETHEUS_RW_TREND_STATS='p(50),p(95),p(99),max'
-K6_FLAGS   = --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) --tag testid=$(K6_TESTID) $(if $(K6_OUT),--out $(K6_OUT))
+# Profile parameters are forwarded only when set, e.g. make test-load SCENARIO=soak RATE=2000 DURATION=2h
+K6_PARAMS  = MIX RATE DURATION VUS SPIKE_RATE PERIOD STEP MAX_RATE MAX_VUS
+K6_FLAGS   = --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) --tag testid=$(K6_TESTID) \
+	$(foreach p,$(K6_PARAMS),$(if $($(p)),--env $(p)=$($(p)))) $(if $(K6_OUT),--out $(K6_OUT))
 
 # Images used to validate observability configs; keep in sync with compose.yaml.
 VM_VERSION   ?= v1.154.0
@@ -23,7 +26,7 @@ IMAGE     ?= ghcr.io/jtprogru/cubic-root:latest
 .DEFAULT_GOAL := help
 
 .PHONY: help deps-install tidy deps-update build-bin build-docker push-docker tests test-unit \
-	test-bench run-bin check-k6 test-load test-load-smoke run-traces run-traced obs-up obs-down obs-check chart-check
+	test-bench run-bin check-k6 test-load test-load-smoke test-load-demo run-traces run-traced obs-up obs-down obs-check chart-check
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -65,11 +68,14 @@ run-bin: build-bin ## Run binary
 check-k6:
 	@command -v k6 >/dev/null 2>&1 || { echo "k6 is not installed: brew install k6"; exit 1; }
 
-test-load: check-k6 ## Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|hot-keys|spike (see k6/load.js)
+test-load: check-k6 ## Run a k6 profile: SCENARIO=smoke|demo|load|stress|spike|soak|waves|breakpoint|marathon|baseline, MIX=...
 	$(K6_ENV) k6 run $(K6_FLAGS) $(K6_SCRIPT)
 
-test-load-smoke: check-k6 ## Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
-	$(K6_ENV) k6 run --vus 10 --duration 10s $(K6_FLAGS) $(K6_SCRIPT)
+test-load-smoke: check-k6 ## Smoke test: 30s of mixed traffic at 50 req/s with strict thresholds
+	$(MAKE) --no-print-directory test-load SCENARIO=smoke
+
+test-load-demo: check-k6 ## ~3m that light up every dashboard: warm-up, steady load, spike, recovery
+	$(MAKE) --no-print-directory test-load SCENARIO=demo
 
 run-traces: ## Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
 	docker compose up victoriatraces -d
