@@ -217,6 +217,8 @@ ok  	github.com/jtprogru/cubic-root	4.088s
 
 Например: `make test-load SCENARIO=wide-range`. Для длинных прогонов стоит снизить долю трейсов: `TRACES_SAMPLE_RATIO=0.01 make obs-up`.
 
+`make test-load` и `make test-load-smoke` отправляют клиентские метрики k6 в VictoriaMetrics через Prometheus remote write, у каждого прогона своя метка `testid`. Их показывает дашборд `cubic-root · Load test` рядом с серверными метриками той же нагрузки. Если VictoriaMetrics не запущена, выключите отправку: `make test-load K6_OUT=`.
+
 Для тестирования производительности можно использовать утилиту `wrk`. Пример запуска:
 
 ```shell

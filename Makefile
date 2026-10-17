@@ -2,6 +2,15 @@ BASE_URL  ?= http://localhost:8080
 K6_SCRIPT ?= k6/load.js
 SCENARIO  ?= baseline
 
+# Client-side k6 metrics are pushed to VictoriaMetrics for the Load test dashboard,
+# one testid per run. K6_OUT= disables it, e.g. against a stack without VictoriaMetrics.
+K6_OUT    ?= experimental-prometheus-rw
+K6_RW_URL ?= http://localhost:8428/api/v1/write
+K6_TESTID ?= $(SCENARIO)-$(shell date +%Y%m%d-%H%M%S)
+K6_ENV     = K6_PROMETHEUS_RW_SERVER_URL=$(K6_RW_URL) K6_PROMETHEUS_RW_PUSH_INTERVAL=5s \
+	K6_PROMETHEUS_RW_TREND_STATS='p(50),p(95),p(99),max'
+K6_FLAGS   = --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) --tag testid=$(K6_TESTID) $(if $(K6_OUT),--out $(K6_OUT))
+
 # Images used to validate observability configs; keep in sync with compose.yaml.
 VM_VERSION   ?= v1.154.0
 VECTOR_IMAGE ?= timberio/vector:0.59.0-alpine
@@ -57,10 +66,10 @@ check-k6:
 	@command -v k6 >/dev/null 2>&1 || { echo "k6 is not installed: brew install k6"; exit 1; }
 
 test-load: check-k6 ## Run k6 load test, SCENARIO=baseline|wide-range|bad-requests|hot-keys|spike (see k6/load.js)
-	k6 run --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) $(K6_SCRIPT)
+	$(K6_ENV) k6 run $(K6_FLAGS) $(K6_SCRIPT)
 
 test-load-smoke: check-k6 ## Smoke test: 10 VU, 10s — быстрая проверка что сервис отвечает
-	k6 run --vus 10 --duration 10s --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) $(K6_SCRIPT)
+	$(K6_ENV) k6 run --vus 10 --duration 10s $(K6_FLAGS) $(K6_SCRIPT)
 
 run-traces: ## Start VictoriaTraces for local tracing (OTLP HTTP and UI on :10428)
 	docker compose up victoriatraces -d
