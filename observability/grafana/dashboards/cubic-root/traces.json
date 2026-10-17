@@ -1,0 +1,995 @@
+{
+  "title": "cubic-root · Traces",
+  "uid": "cubic-root-traces",
+  "description": "Drill-down into traces in VictoriaTraces: RED from spans via LogsQL, TraceQL metrics and search.",
+  "tags": [
+    "cubic-root",
+    "traces"
+  ],
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "links": [
+    {
+      "title": "cubic-root",
+      "type": "dashboards",
+      "tags": [
+        "cubic-root"
+      ],
+      "asDropdown": false,
+      "keepTime": true,
+      "includeVars": true
+    },
+    {
+      "title": "vmalert",
+      "type": "link",
+      "url": "http://localhost:8880",
+      "targetBlank": true,
+      "icon": "bolt"
+    },
+    {
+      "title": "VictoriaLogs UI",
+      "type": "link",
+      "url": "http://localhost:9428/select/vmui",
+      "targetBlank": true,
+      "icon": "doc"
+    },
+    {
+      "title": "VictoriaTraces UI",
+      "type": "link",
+      "url": "http://localhost:10428/select/vmui",
+      "targetBlank": true,
+      "icon": "external link"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Metrics",
+        "type": "datasource",
+        "query": "victoriametrics-metrics-datasource",
+        "hide": 0,
+        "current": {}
+      },
+      {
+        "name": "job",
+        "label": "Job",
+        "type": "query",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(cubic_root_build_info, job)",
+          "refId": "job"
+        },
+        "definition": "label_values(cubic_root_build_info, job)",
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "current": {}
+      },
+      {
+        "name": "min_duration",
+        "label": "Slower than",
+        "type": "custom",
+        "query": "1ms,5ms,10ms,50ms,100ms,500ms",
+        "options": [
+          {
+            "text": "1ms",
+            "value": "1ms",
+            "selected": false
+          },
+          {
+            "text": "5ms",
+            "value": "5ms",
+            "selected": false
+          },
+          {
+            "text": "10ms",
+            "value": "10ms",
+            "selected": true
+          },
+          {
+            "text": "50ms",
+            "value": "50ms",
+            "selected": false
+          },
+          {
+            "text": "100ms",
+            "value": "100ms",
+            "selected": false
+          },
+          {
+            "text": "500ms",
+            "value": "500ms",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": "10ms",
+          "value": "10ms"
+        },
+        "multi": false,
+        "hide": 0
+      },
+      {
+        "name": "cache_status",
+        "label": "Cache",
+        "type": "custom",
+        "query": "HIT,MISS,DISABLED",
+        "options": [
+          {
+            "text": "HIT",
+            "value": "HIT",
+            "selected": false
+          },
+          {
+            "text": "MISS",
+            "value": "MISS",
+            "selected": false
+          },
+          {
+            "text": "DISABLED",
+            "value": "DISABLED",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "multi": true,
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*"
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "enable": true,
+        "iconColor": "blue",
+        "expr": "changes(process_start_time_seconds{job=\"$job\"}[2m]) > 0",
+        "titleFormat": "restart / deploy",
+        "step": "60s"
+      },
+      {
+        "name": "Fault injection",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "expr": "max(cubic_root_fault_injection_enabled{job=\"$job\"}) == 1",
+        "titleFormat": "fault injection is ON",
+        "step": "60s"
+      },
+      {
+        "name": "Alerts",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{severity}}",
+        "step": "60s"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "RED from spans: LogsQL over VictoriaTraces",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Spans per second by name",
+      "description": "Every span is a VictoriaLogs record in VictoriaTraces, so LogsQL counts them directly.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victoriatraces-logsql"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "links": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victoriatraces-logsql"
+          },
+          "expr": "\"resource_attr:service.name\":\"cubic-root\" | stats by (name) rate()",
+          "queryType": "statsRange",
+          "editorMode": "code",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "id": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error spans per second",
+      "description": "Spans with status ERROR (status_code=2), e.g. 5xx and injected faults.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victoriatraces-logsql"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "links": [],
+          "min": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victoriatraces-logsql"
+          },
+          "expr": "\"resource_attr:service.name\":\"cubic-root\" status_code:2 | stats by (name) rate()",
+          "queryType": "statsRange",
+          "editorMode": "code",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "id": 3,
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Span duration p99 by name",
+      "description": "Duration of each span type: the HTTP server span and the computation inside it.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victoriatraces-logsql"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "links": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victoriatraces-logsql"
+          },
+          "expr": "\"resource_attr:service.name\":\"cubic-root\" | stats by (name) quantile(0.99, duration)",
+          "queryType": "statsRange",
+          "editorMode": "code",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "id": 4,
+      "gridPos": {
+        "x": 16,
+        "y": 1,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Traced share of requests, 5m",
+      "description": "Server spans over the last 5 minutes divided by requests over the same window: the effective sampling ratio. A few percent off is the window edge (counters are scraped every 5s); far below TRACES_SAMPLE_RATIO means spans are being lost.",
+      "datasource": {
+        "type": "datasource",
+        "uid": "-- Mixed --"
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "links": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victoriatraces-logsql"
+          },
+          "expr": "_time:5m \"resource_attr:service.name\":\"cubic-root\" kind:2 | stats count()",
+          "queryType": "stats",
+          "editorMode": "code",
+          "legendFormat": "",
+          "refId": "A",
+          "hide": true
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(http_server_request_duration_seconds_count{job=\"$job\", http_route=~\"/cubic-root|/health\"}[5m]))",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "refId": "B",
+          "hide": true
+        },
+        {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "reduce",
+          "expression": "A",
+          "reducer": "last",
+          "refId": "C",
+          "hide": true
+        },
+        {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "reduce",
+          "expression": "B",
+          "reducer": "last",
+          "refId": "D",
+          "hide": true
+        },
+        {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "type": "math",
+          "expression": "$C / $D",
+          "refId": "E"
+        }
+      ],
+      "id": 5,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Server span p99 by cache status",
+      "description": "HIT answers skip the computation, MISS pays for it.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victoriatraces-logsql"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "links": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victoriatraces-logsql"
+          },
+          "expr": "\"resource_attr:service.name\":\"cubic-root\" kind:2 \"span_attr:http.route\":\"/cubic-root\" \"span_attr:cache.status\":* | rename \"span_attr:cache.status\" as cache_status | stats by (cache_status) quantile(0.99, duration)",
+          "queryType": "statsRange",
+          "editorMode": "code",
+          "legendFormat": "{{cache_status}}",
+          "refId": "A"
+        }
+      ],
+      "id": 6,
+      "gridPos": {
+        "x": 6,
+        "y": 9,
+        "w": 9,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by cache status (TraceQL metrics)",
+      "description": "The same split via the experimental Tempo API of VictoriaTraces. Points carry exemplars: click one to open a trace.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "victoriatraces-tempo"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "links": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "victoriatraces-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{resource.service.name=\"cubic-root\" && kind=server && span.http.route=\"/cubic-root\" && span.cache.status=~\".+\"} | rate() by (span.cache.status)",
+          "metricsQueryType": "range",
+          "step": "30s",
+          "refId": "A"
+        }
+      ],
+      "id": 7,
+      "gridPos": {
+        "x": 15,
+        "y": 9,
+        "w": 9,
+        "h": 8
+      }
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Computation",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "bargauge",
+      "title": "Computation time by Newton steps",
+      "description": "Median duration of cubeRoot.calculate per number of iterations.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victoriatraces-logsql"
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns",
+          "min": 0,
+          "links": [],
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victoriatraces-logsql"
+          },
+          "expr": "name:\"cubeRoot.calculate\" | rename \"span_attr:cuberoot.iterations\" as iterations | stats by (iterations) quantile(0.5, duration)",
+          "queryType": "stats",
+          "editorMode": "code",
+          "legendFormat": "{{iterations}} steps",
+          "refId": "A"
+        }
+      ],
+      "id": 9,
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Computations by outcome",
+      "description": "Outcome attribute of computation spans.",
+      "datasource": {
+        "type": "victoriametrics-logs-datasource",
+        "uid": "victoriatraces-logsql"
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "links": [],
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victoriatraces-logsql"
+          },
+          "expr": "name:\"cubeRoot.calculate\" | rename \"span_attr:cuberoot.outcome\" as outcome | stats by (outcome) count()",
+          "queryType": "stats",
+          "editorMode": "code",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "id": 10,
+      "gridPos": {
+        "x": 12,
+        "y": 18,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "id": 11,
+      "type": "row",
+      "title": "Find traces: TraceQL",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "table",
+      "title": "Slowest requests",
+      "description": "Server spans longer than min_duration. Under heavy load a low threshold can exceed the VictoriaTraces per-query memory limit: raise min_duration or narrow the time range.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "victoriatraces-tempo"
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "victoriatraces-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{resource.service.name=\"cubic-root\" && kind=server && duration > ${min_duration} && span.cache.status=~\"${cache_status:regex}\"}",
+          "limit": 20,
+          "tableType": "traces",
+          "refId": "A"
+        }
+      ],
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "table",
+      "title": "Errors",
+      "description": "Traces with an error span: 5xx, injected faults, non-converged computations.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "victoriatraces-tempo"
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "victoriatraces-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{resource.service.name=\"cubic-root\" && status=error}",
+          "limit": 20,
+          "tableType": "traces",
+          "refId": "A"
+        }
+      ],
+      "id": 13,
+      "gridPos": {
+        "x": 12,
+        "y": 27,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "table",
+      "title": "Injected faults",
+      "description": "Requests hit by FAULT_* settings.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "victoriatraces-tempo"
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "victoriatraces-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{resource.service.name=\"cubic-root\" && (span.fault.error=true || span.fault.latency=true)}",
+          "limit": 20,
+          "tableType": "traces",
+          "refId": "A"
+        }
+      ],
+      "id": 14,
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "type": "table",
+      "title": "Did not converge",
+      "description": "Computations that did not converge. Empty since the fix of the algorithm.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "victoriatraces-tempo"
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "victoriatraces-tempo"
+          },
+          "queryType": "traceql",
+          "query": "{name=\"cubeRoot.calculate\" && span.cuberoot.outcome=~\"max_iter|degenerate\"}",
+          "limit": 20,
+          "tableType": "traces",
+          "refId": "A"
+        }
+      ],
+      "id": 15,
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "Ingestion into VictoriaTraces",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "OTLP requests",
+      "description": "OTLP export batches from the SDK and failed ones.",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "links": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(vt_http_requests_total{path=\"/insert/opentelemetry/v1/traces\"}[$__rate_interval]))",
+          "legendFormat": "requests/s",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(vt_http_errors_total{path=\"/insert/opentelemetry/v1/traces\"}[$__rate_interval]))",
+          "legendFormat": "errors/s",
+          "refId": "B"
+        }
+      ],
+      "id": 17,
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Ingested bytes",
+      "description": "",
+      "datasource": {
+        "type": "victoriametrics-metrics-datasource",
+        "uid": "${datasource}"
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": 60000
+          },
+          "links": [],
+          "min": 0
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "victoriametrics-metrics-datasource",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(vt_bytes_ingested_total{type=\"opentelemetry_traces_otlphttp_protobuf\"}[$__rate_interval]))",
+          "legendFormat": "OTLP",
+          "refId": "A"
+        }
+      ],
+      "id": 18,
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 12,
+        "h": 7
+      }
+    }
+  ]
+}

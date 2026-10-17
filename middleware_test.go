@@ -140,6 +140,8 @@ func TestMetricsLint(t *testing.T) {
 		"cubic_root_cache_evictions_total",
 		"cubic_root_cache_hit_age_seconds",
 		"cubic_root_cache_coalesced_total",
+		"cubic_root_cache_ghost_hits_total",
+		"cubic_root_cache_ttl_seconds",
 		"cubic_root_cache_entries",
 		"cubic_root_cache_capacity_entries",
 		"cubic_root_injected_faults_total",

@@ -49,6 +49,21 @@ func TestCache_HitMiss(t *testing.T) {
 	}
 }
 
+// TestCache_Ghost: повторный запрос ключа, вытесненного из-за размера,
+// учитывается как ghost hit — его обслужил бы кэш вдвое больше.
+func TestCache_Ghost(t *testing.T) {
+	h, reg, m := newTestHandler(apiConfig{CacheSize: 1, CacheTTL: time.Minute})
+	for _, d := range []string{"1", "8", "1"} {
+		get(h, "/cubic-root?d="+d)
+	}
+	if got := testutil.ToFloat64(m.cacheGhostHits); got != 1 {
+		t.Errorf("ghost hits: got %v, want 1", got)
+	}
+	if got := findMetric(t, reg, "cubic_root_cache_ttl_seconds", map[string]string{}).GetGauge().GetValue(); got != 60 {
+		t.Errorf("cache TTL: got %v, want 60", got)
+	}
+}
+
 func TestCache_NegativeZero(t *testing.T) {
 	h, _, _ := newTestHandler(apiConfig{CacheSize: 10})
 	get(h, "/cubic-root?d=0")
@@ -67,8 +82,10 @@ func TestCache_Disabled(t *testing.T) {
 	if got := testutil.ToFloat64(m.calculations.WithLabelValues(string(outcomeConverged))); got != 2 {
 		t.Errorf("calculations: got %v, want 2", got)
 	}
-	if got := findMetric(t, reg, "cubic_root_cache_capacity_entries", map[string]string{}).GetGauge().GetValue(); got != 0 {
-		t.Errorf("cache capacity: got %v, want 0", got)
+	for _, name := range []string{"cubic_root_cache_capacity_entries", "cubic_root_cache_ttl_seconds"} {
+		if got := findMetric(t, reg, name, map[string]string{}).GetGauge().GetValue(); got != 0 {
+			t.Errorf("%s: got %v, want 0", name, got)
+		}
 	}
 }
 

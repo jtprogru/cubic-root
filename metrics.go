@@ -45,6 +45,7 @@ type metrics struct {
 	cacheEvictions *prometheus.CounterVec
 	cacheHitAge    prometheus.Histogram
 	cacheCoalesced prometheus.Counter
+	cacheGhostHits prometheus.Counter
 
 	injectedFaults        *prometheus.CounterVec
 	faultInjectionEnabled prometheus.Gauge
@@ -109,6 +110,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		Name: "cubic_root_cache_coalesced_total",
 		Help: "Cache misses that waited for a computation already started by another request.",
 	})
+	m.cacheGhostHits = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cubic_root_cache_ghost_hits_total",
+		Help: "Cache misses for keys recently evicted for capacity: hits a cache twice as large would have served.",
+	})
 
 	m.injectedFaults = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "cubic_root_injected_faults_total",
@@ -140,17 +145,21 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	reg.MustRegister(
 		m.requestDuration, m.activeRequests, m.responseSize,
 		m.calculations, m.iterations, m.relativeError, m.inputMagnitude, m.validationErrors,
-		m.cacheRequests, m.cacheEvictions, m.cacheHitAge, m.cacheCoalesced,
+		m.cacheRequests, m.cacheEvictions, m.cacheHitAge, m.cacheCoalesced, m.cacheGhostHits,
 		m.injectedFaults, m.faultInjectionEnabled,
 	)
 	return m
 }
 
-// registerCacheSize регистрирует размер кэша и его лимит. Размер считывается
-// при scrape, а не обновляется на каждой операции: горячий путь кэша остаётся
-// без лишних атомарных операций.
-func (m *metrics) registerCacheSize(reg prometheus.Registerer, size func() int, capacity int) {
+// registerCacheGauges регистрирует размер кэша, его лимит и TTL. Размер
+// считывается при scrape, а не обновляется на каждой операции: горячий путь
+// кэша остаётся без лишних атомарных операций.
+func (m *metrics) registerCacheGauges(reg prometheus.Registerer, size func() int, capacity int, ttl time.Duration) {
 	reg.MustRegister(
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cubic_root_cache_ttl_seconds",
+			Help: "Lifetime of response cache entries; 0 when entries never expire or the cache is disabled.",
+		}, func() float64 { return ttl.Seconds() }),
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "cubic_root_cache_entries",
 			Help: "Entries currently stored in the response cache.",
@@ -164,15 +173,16 @@ func (m *metrics) registerCacheSize(reg prometheus.Registerer, size func() int, 
 
 // cacheObserver переводит события кэша в метрики.
 type cacheObserver struct {
-	hits, misses prometheus.Counter
-	evictions    *prometheus.CounterVec
-	hitAge       prometheus.Histogram
+	hits, misses, ghostHits prometheus.Counter
+	evictions               *prometheus.CounterVec
+	hitAge                  prometheus.Histogram
 }
 
 func newCacheObserver(m *metrics) cacheObserver {
 	return cacheObserver{
 		hits:      m.cacheRequests.WithLabelValues("hit"),
 		misses:    m.cacheRequests.WithLabelValues("miss"),
+		ghostHits: m.cacheGhostHits,
 		evictions: m.cacheEvictions,
 		hitAge:    m.cacheHitAge,
 	}
@@ -183,7 +193,12 @@ func (o cacheObserver) Hit(age time.Duration) {
 	o.hitAge.Observe(age.Seconds())
 }
 
-func (o cacheObserver) Miss() { o.misses.Inc() }
+func (o cacheObserver) Miss(ghost bool) {
+	o.misses.Inc()
+	if ghost {
+		o.ghostHits.Inc()
+	}
+}
 
 func (o cacheObserver) Evict(reason cache.EvictReason) {
 	o.evictions.WithLabelValues(string(reason)).Inc()

@@ -12,6 +12,7 @@ type recorder struct {
 	mu        sync.Mutex
 	hits      int
 	misses    int
+	ghostHits int
 	evictions map[EvictReason]int
 	ages      []time.Duration
 }
@@ -27,10 +28,13 @@ func (r *recorder) Hit(age time.Duration) {
 	r.ages = append(r.ages, age)
 }
 
-func (r *recorder) Miss() {
+func (r *recorder) Miss(ghost bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.misses++
+	if ghost {
+		r.ghostHits++
+	}
 }
 
 func (r *recorder) Evict(reason EvictReason) {
@@ -148,7 +152,7 @@ func TestAddRefreshesEntry(t *testing.T) {
 type reentrant struct{ c *LRU[string, int] }
 
 func (r reentrant) Hit(time.Duration) { r.c.Len() }
-func (r reentrant) Miss()             { r.c.Len() }
+func (r reentrant) Miss(bool)         { r.c.Len() }
 func (r reentrant) Evict(EvictReason) { r.c.Len() }
 
 func TestObserverIsCalledOutsideLock(t *testing.T) {
@@ -188,6 +192,70 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 	if c.Len() > c.Cap() {
 		t.Errorf("Len=%d exceeds Cap=%d", c.Len(), c.Cap())
+	}
+}
+
+// TestGhost: промах по ключу, вытесненному из-за размера, отмечается как
+// ghost — кэш вдвое больше дал бы попадание.
+func TestGhost(t *testing.T) {
+	rec := newRecorder()
+	c := New[string, int](2, 0, WithObserver(rec), WithGhost())
+
+	c.Add("a", 1)
+	c.Add("b", 2)
+	c.Add("c", 3) // a вытеснен и запомнен
+	c.Get("a")
+	c.Get("never-seen")
+	if rec.misses != 2 || rec.ghostHits != 1 {
+		t.Fatalf("misses=%d ghost=%d, want 2 and 1", rec.misses, rec.ghostHits)
+	}
+
+	c.Add("a", 1) // a снова в кэше и больше не призрак; вытеснен b
+	c.Get("d")
+	c.Get("b")
+	if rec.ghostHits != 2 {
+		t.Errorf("ghost hits after re-adding: got %d, want 2 (only b)", rec.ghostHits)
+	}
+}
+
+func TestGhostIsBounded(t *testing.T) {
+	rec := newRecorder()
+	c := New[string, int](1, 0, WithObserver(rec), WithGhost())
+
+	c.Add("a", 1)
+	c.Add("b", 2) // a → ghost
+	c.Add("c", 3) // b → ghost, a выпадает из ghost: он помнит не больше capacity ключей
+	c.Get("a")
+	c.Get("b")
+	if rec.ghostHits != 1 {
+		t.Errorf("ghost hits: got %d, want 1 (b only)", rec.ghostHits)
+	}
+}
+
+// TestGhostIgnoresExpired: устаревшие записи не помогли бы и в большем кэше,
+// поэтому в призрачный список не попадают.
+func TestGhostIgnoresExpired(t *testing.T) {
+	rec := newRecorder()
+	clk := &clock{t: time.Unix(0, 0)}
+	c := New[string, int](1, time.Minute, WithObserver(rec), WithClock(clk.now), WithGhost())
+
+	c.Add("a", 1)
+	clk.advance(2 * time.Minute)
+	c.Add("b", 2) // a вытеснен как expired
+	c.Get("a")
+	if rec.ghostHits != 0 {
+		t.Errorf("ghost hits: got %d, want 0", rec.ghostHits)
+	}
+}
+
+func TestNoGhostByDefault(t *testing.T) {
+	rec := newRecorder()
+	c := New[string, int](1, 0, WithObserver(rec))
+	c.Add("a", 1)
+	c.Add("b", 2)
+	c.Get("a")
+	if rec.ghostHits != 0 {
+		t.Errorf("ghost hits without WithGhost: %d", rec.ghostHits)
 	}
 }
 

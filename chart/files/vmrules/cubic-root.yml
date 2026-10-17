@@ -141,7 +141,7 @@ groups:
             SLO: 99.9% of /cubic-root requests are answered without 5xx. Over the last 1h the bad share is
             {{ $value | humanizePercentage }} (threshold 0.0144, 14.4x the
             0.001 budget); the 5m window confirms it is still happening.
-            Check 5xx in the Golden signals row and error logs in VictoriaLogs ({service="cubic-root"} level:(ERROR OR WARN)).
+            Check the Overview and Logs dashboards: 5xx by status class and error logs ({service="cubic-root"} level:(ERROR OR WARN)).
       - alert: CubicRootAvailabilityBudgetBurnSlow
         expr: |
           job:cubic_root_availability_errors:ratio_rate6h > 0.006
@@ -157,7 +157,7 @@ groups:
             SLO: 99.9% of /cubic-root requests are answered without 5xx. Over the last 6h the bad share is
             {{ $value | humanizePercentage }} (threshold 0.006, 6x the
             0.001 budget); the 30m window confirms it is still happening.
-            Check 5xx in the Golden signals row and error logs in VictoriaLogs ({service="cubic-root"} level:(ERROR OR WARN)).
+            Check the Overview and Logs dashboards: 5xx by status class and error logs ({service="cubic-root"} level:(ERROR OR WARN)).
       - alert: CubicRootLatencyBudgetBurnFast
         expr: |
           job:cubic_root_latency_slow:ratio_rate1h > 0.144
@@ -173,7 +173,7 @@ groups:
             SLO: 99% of successful /cubic-root requests are faster than 10ms. Over the last 1h the bad share is
             {{ $value | humanizePercentage }} (threshold 0.144, 14.4x the
             0.01 budget); the 5m window confirms it is still happening.
-            Check the latency heatmap and scheduler latency: CPU saturation shows up there first.
+            Check slow traces on the Traces dashboard and scheduler latency on the Runtime dashboard: CPU saturation shows up there first.
       - alert: CubicRootLatencyBudgetBurnSlow
         expr: |
           job:cubic_root_latency_slow:ratio_rate6h > 0.06
@@ -189,7 +189,7 @@ groups:
             SLO: 99% of successful /cubic-root requests are faster than 10ms. Over the last 6h the bad share is
             {{ $value | humanizePercentage }} (threshold 0.06, 6x the
             0.01 budget); the 30m window confirms it is still happening.
-            Check the latency heatmap and scheduler latency: CPU saturation shows up there first.
+            Check slow traces on the Traces dashboard and scheduler latency on the Runtime dashboard: CPU saturation shows up there first.
       - alert: CubicRootCorrectnessBudgetBurnFast
         expr: |
           job:cubic_root_incorrect_results:ratio_rate1h > 0.00144
@@ -205,7 +205,7 @@ groups:
             SLO: 99.99% of computed results have relative error |z^3-d|/|d| <= 1e-12. Over the last 1h the bad share is
             {{ $value | humanizePercentage }} (threshold 0.00144, 14.4x the
             0.0001 budget); the 5m window confirms it is still happening.
-            Check calculations by outcome and the relative error heatmap in the Work row.
+            Check calculations by outcome and the relative error heatmap on the Work and correctness dashboard.
       - alert: CubicRootCorrectnessBudgetBurnSlow
         expr: |
           job:cubic_root_incorrect_results:ratio_rate6h > 0.0006
@@ -221,7 +221,7 @@ groups:
             SLO: 99.99% of computed results have relative error |z^3-d|/|d| <= 1e-12. Over the last 6h the bad share is
             {{ $value | humanizePercentage }} (threshold 0.0006, 6x the
             0.0001 budget); the 30m window confirms it is still happening.
-            Check calculations by outcome and the relative error heatmap in the Work row.
+            Check calculations by outcome and the relative error heatmap on the Work and correctness dashboard.
       - alert: CubicRootNonConvergedResults
         expr: sum by (job) (increase(cubic_root_calculations_total{job="cubic-root", outcome=~"max_iter|degenerate"}[10m])) > 0
         labels:
