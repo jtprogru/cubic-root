@@ -68,9 +68,14 @@ func newAPI(cfg apiConfig, m *metrics, reg prometheus.Registerer) *api {
 	if cfg.CacheSize > 0 {
 		a.cache = cache.New[uint64, cubicRootResult](cfg.CacheSize, cfg.CacheTTL,
 			cache.WithObserver(newCacheObserver(m)),
+			cache.WithGhost(),
 		)
 	}
-	m.registerCacheSize(reg, a.cacheLen, cfg.CacheSize)
+	ttl := cfg.CacheTTL
+	if a.cache == nil {
+		ttl = 0
+	}
+	m.registerCacheGauges(reg, a.cacheLen, cfg.CacheSize, ttl)
 	if cfg.Faults.enabled() {
 		m.faultInjectionEnabled.Set(1)
 	}

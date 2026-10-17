@@ -116,6 +116,8 @@ HTTP-слой (golden signals) снимает middleware со всех запр�
 | `cubic_root_cache_capacity_entries` | gauge | — | лимит размера, `0` при выключенном кэше |
 | `cubic_root_cache_hit_age_seconds` | histogram | — | возраст записи в момент попадания, для подбора `CACHE_TTL` |
 | `cubic_root_cache_coalesced_total` | counter | — | промахи, дождавшиеся чужого вычисления |
+| `cubic_root_cache_ghost_hits_total` | counter | — | промахи по ключам, недавно вытесненным из-за размера: их обслужил бы кэш вдвое больше |
+| `cubic_root_cache_ttl_seconds` | gauge | — | `CACHE_TTL`, `0` без устаревания или без кэша |
 
 Fault injection: `cubic_root_injected_faults_total{type}` (`error` / `latency`) и `cubic_root_fault_injection_enabled` (1, если включена).
 

@@ -3,6 +3,11 @@
 // Кэш ничего не знает о метриках: события (попадание, промах, вытеснение)
 // получает Observer. Наблюдатель вызывается вне блокировки, поэтому может
 // сам обращаться к кэшу.
+//
+// С опцией WithGhost кэш дополнительно помнит ключи, недавно вытесненные из-за
+// размера («призрачный» LRU из одних ключей той же ёмкости). Промах по такому
+// ключу означает, что кэш вдвое больше дал бы попадание: так видно, поможет ли
+// увеличение размера, ещё до эксперимента.
 package cache
 
 import (
@@ -25,8 +30,9 @@ const (
 type Observer interface {
 	// Hit — значение найдено; age — сколько записи было на момент попадания.
 	Hit(age time.Duration)
-	// Miss — значения нет или оно устарело.
-	Miss()
+	// Miss — значения нет или оно устарело. ghost — ключ недавно вытеснен из-за
+	// размера, и кэш вдвое больше дал бы попадание (только с WithGhost).
+	Miss(ghost bool)
 	// Evict — запись удалена.
 	Evict(reason EvictReason)
 }
@@ -34,7 +40,7 @@ type Observer interface {
 type noopObserver struct{}
 
 func (noopObserver) Hit(time.Duration) {}
-func (noopObserver) Miss()             {}
+func (noopObserver) Miss(bool)         {}
 func (noopObserver) Evict(EvictReason) {}
 
 // Option настраивает LRU.
@@ -43,11 +49,18 @@ type Option func(*options)
 type options struct {
 	observer Observer
 	now      func() time.Time
+	ghost    bool
 }
 
 // WithObserver подключает наблюдателя за событиями кэша.
 func WithObserver(o Observer) Option {
 	return func(opts *options) { opts.observer = o }
+}
+
+// WithGhost включает учёт ключей, вытесненных из-за размера: промахи по ним
+// приходят в Observer.Miss с ghost=true. Хранит до capacity ключей без значений.
+func WithGhost() Option {
+	return func(opts *options) { opts.ghost = true }
 }
 
 // WithClock подменяет источник времени (для тестов).
@@ -66,6 +79,11 @@ type LRU[K comparable, V any] struct {
 	items    map[K]*list.Element
 	observer Observer
 	now      func() time.Time
+
+	// ghost хранит ключи, вытесненные из-за размера, в порядке вытеснения;
+	// nil, если учёт выключен.
+	ghost      *list.List
+	ghostItems map[K]*list.Element
 }
 
 type entry[K comparable, V any] struct {
@@ -83,7 +101,7 @@ func New[K comparable, V any](capacity int, ttl time.Duration, opts ...Option) *
 	for _, opt := range opts {
 		opt(&o)
 	}
-	return &LRU[K, V]{
+	c := &LRU[K, V]{
 		capacity: capacity,
 		ttl:      ttl,
 		order:    list.New(),
@@ -91,6 +109,11 @@ func New[K comparable, V any](capacity int, ttl time.Duration, opts ...Option) *
 		observer: o.observer,
 		now:      o.now,
 	}
+	if o.ghost {
+		c.ghost = list.New()
+		c.ghostItems = make(map[K]*list.Element, capacity)
+	}
+	return c
 }
 
 // Get возвращает значение по ключу. Устаревшая запись удаляется и считается
@@ -102,8 +125,9 @@ func (c *LRU[K, V]) Get(key K) (V, bool) {
 	c.mu.Lock()
 	el, ok := c.items[key]
 	if !ok {
+		_, ghost := c.ghostItems[key]
 		c.mu.Unlock()
-		c.observer.Miss()
+		c.observer.Miss(ghost)
 		return zero, false
 	}
 	e := el.Value.(*entry[K, V])
@@ -112,7 +136,7 @@ func (c *LRU[K, V]) Get(key K) (V, bool) {
 		c.remove(el)
 		c.mu.Unlock()
 		c.observer.Evict(EvictExpired)
-		c.observer.Miss()
+		c.observer.Miss(false)
 		return zero, false
 	}
 	c.order.MoveToFront(el)
@@ -139,6 +163,7 @@ func (c *LRU[K, V]) Add(key K, value V) {
 	}
 
 	c.items[key] = c.order.PushFront(&entry[K, V]{key: key, value: value, created: now})
+	c.forget(key)
 	var evicted []EvictReason
 	for c.order.Len() > c.capacity {
 		oldest := c.order.Back()
@@ -148,6 +173,9 @@ func (c *LRU[K, V]) Add(key K, value V) {
 			reason = EvictExpired
 		}
 		c.remove(oldest)
+		if reason == EvictCapacity {
+			c.remember(oldest.Value.(*entry[K, V]).key)
+		}
 		evicted = append(evicted, reason)
 	}
 	c.mu.Unlock()
@@ -176,4 +204,25 @@ func (c *LRU[K, V]) expired(age time.Duration) bool {
 func (c *LRU[K, V]) remove(el *list.Element) {
 	c.order.Remove(el)
 	delete(c.items, el.Value.(*entry[K, V]).key)
+}
+
+// remember запоминает ключ, вытесненный из-за размера.
+func (c *LRU[K, V]) remember(key K) {
+	if c.ghost == nil {
+		return
+	}
+	c.ghostItems[key] = c.ghost.PushFront(key)
+	if c.ghost.Len() > c.capacity {
+		oldest := c.ghost.Back()
+		c.ghost.Remove(oldest)
+		delete(c.ghostItems, oldest.Value.(K))
+	}
+}
+
+// forget убирает ключ из призрачного списка: он снова в кэше.
+func (c *LRU[K, V]) forget(key K) {
+	if el, ok := c.ghostItems[key]; ok {
+		c.ghost.Remove(el)
+		delete(c.ghostItems, key)
+	}
 }
