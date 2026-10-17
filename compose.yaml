@@ -6,7 +6,9 @@ services:
     environment:
       - PORT=8080
       - METRICS_PORT=9090
-      - DEBUG=true
+      # Debug logs write a line per request. Turn them off for heavy load tests:
+      # DEBUG=false make obs-up
+      - DEBUG=${DEBUG:-true}
       # VictoriaTraces accepts OTLP at /insert/opentelemetry/v1/traces. The generic
       # OTEL_EXPORTER_OTLP_ENDPOINT doesn't fit: the SDK appends /v1/traces to it.
       - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://victoriatraces:10428/insert/opentelemetry/v1/traces
