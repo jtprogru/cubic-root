@@ -44,7 +44,7 @@
 | кэш, `CALC_DELAY=2ms ±1ms` | 79.1% | 385 | 34µs | 4.8ms |
 | без кэша, `CALC_DELAY=2ms ±1ms` | — | 1 740 | 2.65ms | 5.0ms |
 
-С задержкой кэш снимает медиану с 2.65ms до 34µs, но p99 почти не меняется: в хвост попадают промахи. Сравнить это на графиках можно в ряду Cache дашборда `cubic-root`.
+С задержкой кэш снимает медиану с 2.65ms до 34µs, но p99 почти не меняется: в хвост попадают промахи. Сравнить это на графиках можно на дашборде `cubic-root · Cache`.
 
 ### Основные команды для разработки
 
@@ -139,7 +139,20 @@ Fault injection: `cubic_root_injected_faults_total{type}` (`error` / `latency`) 
 
 Приложение отдаёт метрики на внутреннем порту `9090`, пишет JSON-логи в stdout и отправляет трейсы по OTLP HTTP в VictoriaTraces. Доля сэмплируемых трейсов задаётся переменной `TRACES_SAMPLE_RATIO` (по умолчанию `1.0`), для нагрузочных прогонов её стоит снизить: `TRACES_SAMPLE_RATIO=0.01 make obs-up`.
 
-Дашборд приложения лежит в `observability/grafana/dashboards/cubic-root.json`, официальные дашборды компонентов стека — в папке `victoria-stack` (`observability/grafana/dashboards/victoria-stack/`).
+Дашборды сервиса лежат в папке Grafana `cubic-root` (`observability/grafana/dashboards/cubic-root/`) и связаны ссылками, которые сохраняют время и переменные. Плитки обзора ведут в нужный разрез:
+
+| дашборд | вопрос |
+|---|---|
+| Overview | здоров ли сервис: SLI против SLO, остаток бюджета, горящие алерты, golden signals |
+| Logs | что пишет сервис: объём по уровням, топ сообщений, ERROR/WARN с переходом в трейс, здоровье пайплайна Vector → VictoriaLogs |
+| Traces | где время: RED по спанам через LogsQL, TraceQL-метрики, поиск медленных и ошибочных трейсов, доля запросов с трейсом |
+| Cache | работает ли кэш, правильного ли он размера (призрачный список, TTL) и чего стоит |
+| Work and correctness | что сервис вычисляет: исходы, шаги Ньютона, точность, профиль входов |
+| Runtime and saturation | CPU и планировщик, память и GC, горутины, мьютексы, стоимость `/metrics` |
+| SLO | SLI за 30 дней, бюджет и burn rate трёх SLO, алерты vmalert |
+| Load test | прогоны k6 рядом с тем, как ту же нагрузку видит сервер |
+
+Официальные дашборды компонентов стека лежат в папке `victoria-stack` (`observability/grafana/dashboards/victoria-stack/`).
 
 В Grafana трейсы доступны через три datasource: `VictoriaTraces` (Jaeger API, основной), `VictoriaTraces (Tempo API)` (экспериментальный, для TraceQL и Traces Drilldown) и `VictoriaTraces (LogsQL)`. Последний работает потому, что VictoriaTraces хранит спаны как записи VictoriaLogs: плагин VictoriaLogs считает по ним RED и квантили длительности без отдельного генератора span-метрик. Из лога в VictoriaLogs можно перейти в трейс по полю `trace_id`, из спана — в логи этого трейса.
 
@@ -151,7 +164,7 @@ Fault injection: `cubic_root_injected_faults_total{type}` (`error` / `latency`) 
 | латентность | 99% успешных запросов быстрее 10ms | бакет `le="0.01"` той же гистограммы |
 | корректность | 99.99% результатов с относительной ошибкой ≤ 1e-12 | бакет `le="1e-12"` у `cubic_root_result_relative_error` |
 
-Правила лежат в `chart/files/vmrules/cubic-root.yml`: Helm chart поставляет их как `VMRule`, а локальный vmalert подключает тот же файл. Это recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (вычисление не сошлось, клиент получил 500) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root SLO`.
+Правила лежат в `chart/files/vmrules/cubic-root.yml`: Helm chart поставляет их как `VMRule`, а локальный vmalert подключает тот же файл. Это recording rules для SLI по окнам 5m, 30m, 1h и 6h и алерты multi-window multi-burn-rate по SRE Workbook. Сгорание бюджета в 14.4 раза быстрее нормы за 1h, подтверждённое окном 5m, даёт `critical`, в 6 раз за 6h с подтверждением за 30m — `warning`. Кроме них есть `CubicRootNonConvergedResults` (вычисление не сошлось, клиент получил 500) и `CubicRootFaultInjectionEnabled` (напоминание, что идёт эксперимент). Unit-тесты правил лежат в `observability/vmalert/tests/` и запускаются `make obs-check`, а в CI — workflow `Observability`. SLI, остаток бюджета и burn rate показывает дашборд `cubic-root · SLO`.
 
 Порог латентности выбран по измерениям: при 50 VU p99 сервера около 0.2ms, с `CALC_DELAY=2ms ±1ms` около 5ms. В сценарии `spike` (3000 VU, около 22 000 RPS) процесс упирается в CPU: p99 задержки планировщика доходит до 0.8s, и быстрее 10ms отвечают только 89% запросов, то есть бюджет горит.
 

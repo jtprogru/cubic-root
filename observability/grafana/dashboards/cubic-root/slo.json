@@ -1,9 +1,10 @@
 {
-  "title": "cubic-root SLO",
+  "title": "cubic-root · SLO",
   "uid": "cubic-root-slo",
-  "description": "Availability, latency and correctness SLOs of cubic-root: SLI, error budget and burn rate.",
+  "description": "Availability, latency and correctness SLOs: SLI, error budget and burn rate.",
   "tags": [
-    "cubic-root"
+    "cubic-root",
+    "slo"
   ],
   "schemaVersion": 41,
   "version": 1,
@@ -15,11 +16,44 @@
     "to": "now"
   },
   "timepicker": {},
+  "links": [
+    {
+      "title": "cubic-root",
+      "type": "dashboards",
+      "tags": [
+        "cubic-root"
+      ],
+      "asDropdown": false,
+      "keepTime": true,
+      "includeVars": true
+    },
+    {
+      "title": "vmalert",
+      "type": "link",
+      "url": "http://localhost:8880",
+      "targetBlank": true,
+      "icon": "bolt"
+    },
+    {
+      "title": "VictoriaLogs UI",
+      "type": "link",
+      "url": "http://localhost:9428/select/vmui",
+      "targetBlank": true,
+      "icon": "doc"
+    },
+    {
+      "title": "VictoriaTraces UI",
+      "type": "link",
+      "url": "http://localhost:10428/select/vmui",
+      "targetBlank": true,
+      "icon": "external link"
+    }
+  ],
   "templating": {
     "list": [
       {
         "name": "datasource",
-        "label": "Datasource",
+        "label": "Metrics",
         "type": "datasource",
         "query": "victoriametrics-metrics-datasource",
         "hide": 0,
@@ -70,6 +104,19 @@
         "expr": "max(cubic_root_fault_injection_enabled{job=\"$job\"}) == 1",
         "titleFormat": "fault injection is ON",
         "step": "60s"
+      },
+      {
+        "name": "Alerts",
+        "datasource": {
+          "type": "victoriametrics-metrics-datasource",
+          "uid": "${datasource}"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "ALERTS{alertstate=\"firing\", severity=~\"critical|warning\"}",
+        "titleFormat": "{{alertname}}",
+        "textFormat": "{{severity}}",
+        "step": "60s"
       }
     ]
   },
@@ -90,7 +137,7 @@
     {
       "type": "stat",
       "title": "SLI, 30 days",
-      "description": "Share of good events over 30 days (or over the data available). Objective: 99.9000%.",
+      "description": "Share of good events over 30 days (or the data available). Objective: 99.9000%.",
       "datasource": {
         "type": "victoriametrics-metrics-datasource",
         "uid": "${datasource}"
@@ -108,6 +155,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "links": [
+            {
+              "title": "Error logs",
+              "url": "/d/cubic-root-logs?${__url_time_range}&var-job=${job}&var-level=ERROR&var-level=WARN"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -134,9 +187,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "1 - ((sum(increase(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code=~\"5..\"}[30d])) or vector(0)) / sum(increase(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\"}[30d])))",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 2,
@@ -168,6 +221,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "links": [
+            {
+              "title": "Error logs",
+              "url": "/d/cubic-root-logs?${__url_time_range}&var-job=${job}&var-level=ERROR&var-level=WARN"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -198,9 +257,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "1 - ((sum(increase(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code=~\"5..\"}[30d])) or vector(0)) / sum(increase(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\"}[30d]))) / 0.001",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 3,
@@ -214,7 +273,7 @@
     {
       "type": "stat",
       "title": "Burn rate, 1h",
-      "description": "How many times faster than allowed the budget burns. 1 spends exactly the budget in 30 days; 14.4 over 1h pages.",
+      "description": "How many times faster than allowed the budget burns. 14.4 over 1h pages.",
       "datasource": {
         "type": "victoriametrics-metrics-datasource",
         "uid": "${datasource}"
@@ -232,6 +291,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "links": [
+            {
+              "title": "Error logs",
+              "url": "/d/cubic-root-logs?${__url_time_range}&var-job=${job}&var-level=ERROR&var-level=WARN"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -266,9 +331,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_availability_errors:ratio_rate1h{job=\"$job\"} / 0.001",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 4,
@@ -300,6 +365,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "links": [
+            {
+              "title": "Error logs",
+              "url": "/d/cubic-root-logs?${__url_time_range}&var-job=${job}&var-level=ERROR&var-level=WARN"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -330,9 +401,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_availability_errors:ratio_rate6h{job=\"$job\"} / 0.001",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 5,
@@ -369,11 +440,18 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": 60000,
             "thresholdsStyle": {
               "mode": "dashed"
-            }
+            },
+            "axisSoftMax": 16
           },
+          "links": [
+            {
+              "title": "Error logs",
+              "url": "/d/cubic-root-logs?${__url_time_range}&var-job=${job}&var-level=ERROR&var-level=WARN"
+            }
+          ],
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -401,27 +479,27 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_availability_errors:ratio_rate5m{job=\"$job\"} / 0.001",
-          "legendFormat": "5m"
+          "legendFormat": "5m",
+          "refId": "A"
         },
         {
           "datasource": {
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "B",
           "expr": "job:cubic_root_availability_errors:ratio_rate1h{job=\"$job\"} / 0.001",
-          "legendFormat": "1h"
+          "legendFormat": "1h",
+          "refId": "B"
         },
         {
           "datasource": {
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "C",
           "expr": "job:cubic_root_availability_errors:ratio_rate6h{job=\"$job\"} / 0.001",
-          "legendFormat": "6h"
+          "legendFormat": "6h",
+          "refId": "C"
         }
       ],
       "id": 6,
@@ -448,7 +526,7 @@
     {
       "type": "stat",
       "title": "SLI, 30 days",
-      "description": "Share of good events over 30 days (or over the data available). Objective: 99.0000%.",
+      "description": "Share of good events over 30 days (or the data available). Objective: 99.0000%.",
       "datasource": {
         "type": "victoriametrics-metrics-datasource",
         "uid": "${datasource}"
@@ -466,6 +544,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "links": [
+            {
+              "title": "Slow traces",
+              "url": "/d/cubic-root-traces?${__url_time_range}&var-job=${job}&var-min_duration=10ms"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -492,9 +576,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "1 - (1 - sum(increase(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\", le=\"0.01\"}[30d])) / sum(increase(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\"}[30d])))",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 8,
@@ -526,6 +610,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "links": [
+            {
+              "title": "Slow traces",
+              "url": "/d/cubic-root-traces?${__url_time_range}&var-job=${job}&var-min_duration=10ms"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -556,9 +646,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "1 - (1 - sum(increase(http_server_request_duration_seconds_bucket{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\", le=\"0.01\"}[30d])) / sum(increase(http_server_request_duration_seconds_count{job=\"$job\", http_route=\"/cubic-root\", http_response_status_code!~\"5..\"}[30d]))) / 0.01",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 9,
@@ -572,7 +662,7 @@
     {
       "type": "stat",
       "title": "Burn rate, 1h",
-      "description": "How many times faster than allowed the budget burns. 1 spends exactly the budget in 30 days; 14.4 over 1h pages.",
+      "description": "How many times faster than allowed the budget burns. 14.4 over 1h pages.",
       "datasource": {
         "type": "victoriametrics-metrics-datasource",
         "uid": "${datasource}"
@@ -590,6 +680,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "links": [
+            {
+              "title": "Slow traces",
+              "url": "/d/cubic-root-traces?${__url_time_range}&var-job=${job}&var-min_duration=10ms"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -624,9 +720,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_latency_slow:ratio_rate1h{job=\"$job\"} / 0.01",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 10,
@@ -658,6 +754,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "links": [
+            {
+              "title": "Slow traces",
+              "url": "/d/cubic-root-traces?${__url_time_range}&var-job=${job}&var-min_duration=10ms"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -688,9 +790,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_latency_slow:ratio_rate6h{job=\"$job\"} / 0.01",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 11,
@@ -727,11 +829,18 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": 60000,
             "thresholdsStyle": {
               "mode": "dashed"
-            }
+            },
+            "axisSoftMax": 16
           },
+          "links": [
+            {
+              "title": "Slow traces",
+              "url": "/d/cubic-root-traces?${__url_time_range}&var-job=${job}&var-min_duration=10ms"
+            }
+          ],
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -759,27 +868,27 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_latency_slow:ratio_rate5m{job=\"$job\"} / 0.01",
-          "legendFormat": "5m"
+          "legendFormat": "5m",
+          "refId": "A"
         },
         {
           "datasource": {
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "B",
           "expr": "job:cubic_root_latency_slow:ratio_rate1h{job=\"$job\"} / 0.01",
-          "legendFormat": "1h"
+          "legendFormat": "1h",
+          "refId": "B"
         },
         {
           "datasource": {
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "C",
           "expr": "job:cubic_root_latency_slow:ratio_rate6h{job=\"$job\"} / 0.01",
-          "legendFormat": "6h"
+          "legendFormat": "6h",
+          "refId": "C"
         }
       ],
       "id": 12,
@@ -806,7 +915,7 @@
     {
       "type": "stat",
       "title": "SLI, 30 days",
-      "description": "Share of good events over 30 days (or over the data available). Objective: 99.9900%.",
+      "description": "Share of good events over 30 days (or the data available). Objective: 99.9900%.",
       "datasource": {
         "type": "victoriametrics-metrics-datasource",
         "uid": "${datasource}"
@@ -824,6 +933,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "links": [
+            {
+              "title": "Work",
+              "url": "/d/cubic-root-work?${__url_time_range}&var-job=${job}"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -850,9 +965,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "1 - (1 - sum(increase(cubic_root_result_relative_error_bucket{job=\"$job\", le=\"1e-12\"}[30d])) / sum(increase(cubic_root_result_relative_error_count{job=\"$job\"}[30d])))",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 14,
@@ -884,6 +999,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
+          "links": [
+            {
+              "title": "Work",
+              "url": "/d/cubic-root-work?${__url_time_range}&var-job=${job}"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -914,9 +1035,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "1 - (1 - sum(increase(cubic_root_result_relative_error_bucket{job=\"$job\", le=\"1e-12\"}[30d])) / sum(increase(cubic_root_result_relative_error_count{job=\"$job\"}[30d]))) / 0.0001",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 15,
@@ -930,7 +1051,7 @@
     {
       "type": "stat",
       "title": "Burn rate, 1h",
-      "description": "How many times faster than allowed the budget burns. 1 spends exactly the budget in 30 days; 14.4 over 1h pages.",
+      "description": "How many times faster than allowed the budget burns. 14.4 over 1h pages.",
       "datasource": {
         "type": "victoriametrics-metrics-datasource",
         "uid": "${datasource}"
@@ -948,6 +1069,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "links": [
+            {
+              "title": "Work",
+              "url": "/d/cubic-root-work?${__url_time_range}&var-job=${job}"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -982,9 +1109,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_incorrect_results:ratio_rate1h{job=\"$job\"} / 0.0001",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 16,
@@ -1016,6 +1143,12 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "links": [
+            {
+              "title": "Work",
+              "url": "/d/cubic-root-work?${__url_time_range}&var-job=${job}"
+            }
+          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1046,9 +1179,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_incorrect_results:ratio_rate6h{job=\"$job\"} / 0.0001",
-          "legendFormat": ""
+          "legendFormat": "",
+          "refId": "A"
         }
       ],
       "id": 17,
@@ -1085,11 +1218,18 @@
             "lineWidth": 1,
             "fillOpacity": 10,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": 60000,
             "thresholdsStyle": {
               "mode": "dashed"
-            }
+            },
+            "axisSoftMax": 16
           },
+          "links": [
+            {
+              "title": "Work",
+              "url": "/d/cubic-root-work?${__url_time_range}&var-job=${job}"
+            }
+          ],
           "min": 0,
           "thresholds": {
             "mode": "absolute",
@@ -1117,27 +1257,27 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "job:cubic_root_incorrect_results:ratio_rate5m{job=\"$job\"} / 0.0001",
-          "legendFormat": "5m"
+          "legendFormat": "5m",
+          "refId": "A"
         },
         {
           "datasource": {
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "B",
           "expr": "job:cubic_root_incorrect_results:ratio_rate1h{job=\"$job\"} / 0.0001",
-          "legendFormat": "1h"
+          "legendFormat": "1h",
+          "refId": "B"
         },
         {
           "datasource": {
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "C",
           "expr": "job:cubic_root_incorrect_results:ratio_rate6h{job=\"$job\"} / 0.0001",
-          "legendFormat": "6h"
+          "legendFormat": "6h",
+          "refId": "C"
         }
       ],
       "id": 18,
@@ -1201,11 +1341,11 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "ALERTS{alertstate=\"firing\"}",
           "legendFormat": "",
           "instant": true,
-          "format": "table"
+          "format": "table",
+          "refId": "A"
         }
       ],
       "id": 20,
@@ -1242,12 +1382,13 @@
             "lineWidth": 1,
             "fillOpacity": 40,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": 60000,
             "stacking": {
               "mode": "normal",
               "group": "A"
             }
           },
+          "links": [],
           "min": 0
         },
         "overrides": []
@@ -1258,9 +1399,9 @@
             "type": "victoriametrics-metrics-datasource",
             "uid": "${datasource}"
           },
-          "refId": "A",
           "expr": "count by (alertname) (ALERTS{alertstate=\"firing\"})",
-          "legendFormat": "{{alertname}}"
+          "legendFormat": "{{alertname}}",
+          "refId": "A"
         }
       ],
       "id": 21,
