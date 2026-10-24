@@ -33,6 +33,24 @@ export function seconds(duration) {
 
 const s = (sec) => `${Math.round(sec)}s`;
 
+// planned возвращает, сколько итераций arrival-rate сценарий должен запустить
+// по плану: площадь под графиком RPS. У закрытой модели плана нет, там null.
+export function planned(scenario) {
+    if (scenario.executor === 'constant-arrival-rate') {
+        return scenario.rate * seconds(scenario.duration);
+    }
+    if (scenario.executor === 'ramping-arrival-rate') {
+        let rate = scenario.startRate;
+        let total = 0;
+        for (const stage of scenario.stages) {
+            total += ((rate + stage.target) / 2) * seconds(stage.duration);
+            rate = stage.target;
+        }
+        return total;
+    }
+    return null;
+}
+
 function constantRate({ rate, duration, mix, startTime = '0s' }) {
     return {
         executor: 'constant-arrival-rate', rate, timeUnit: '1s', duration, startTime,
