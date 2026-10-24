@@ -29,3 +29,6 @@ bin/
 
 # Binary from `go build` in the repo root
 /cubic-root
+
+# Address of the load stand, see deploy/stand.sh
+deploy/stand.env
