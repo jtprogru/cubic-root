@@ -38,13 +38,14 @@ function verdict(failed, delivered) {
     return `FAIL, thresholds: ${slo.join(', ')}; ${short} too, so compare client and server p99 on the Load test dashboard`;
 }
 
-export function textSummary(data, { profile, description, mix, plan = {} }) {
+export function textSummary(data, { profile, description, mix, plan = {}, statusOnly = false }) {
     const m = data.metrics;
     const dur = m.http_req_duration.values;
     const rps = m.http_reqs;
     const dropped = m.dropped_iterations ? m.dropped_iterations.values.count : 0;
-    const wrong = m.wrong_results ? pct(m.wrong_results.values.rate) : 'n/a';
-    const hits = m.cache_hits ? pct(m.cache_hits.values.rate) : 'n/a';
+    const notChecked = 'not checked, status-only mode';
+    const wrong = statusOnly ? notChecked : m.wrong_results ? pct(m.wrong_results.values.rate) : 'n/a';
+    const hits = statusOnly ? notChecked : m.cache_hits ? pct(m.cache_hits.values.rate) : 'n/a';
     const vusMax = m.vus_max ? m.vus_max.values.max : 'n/a';
     const delivered = delivery(m, plan);
 
@@ -64,7 +65,7 @@ export function textSummary(data, { profile, description, mix, plan = {} }) {
 
     return `
 ========================================
-  cubic-root load test: ${profile} (mix: ${mix})
+  cubic-root load test: ${profile} (mix: ${mix}${statusOnly ? ', status-only checks' : ''})
   ${description}
 ========================================
   Requests total  : ${rps.values.count}
