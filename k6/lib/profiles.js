@@ -112,12 +112,16 @@ const healthy = {
 export const PROFILES = {
     // smoke — 30 секунд лёгкого смешанного трафика: сервис жив, мониторинг
     // видит все виды запросов, пороги строгие.
-    smoke: () => ({
-        description: '30s at 50 req/s of mixed traffic, strict thresholds',
-        mix: 'realistic',
-        scenarios: (mix) => ({ smoke: constantRate({ rate: num('RATE', 50), duration: env('DURATION', '30s'), mix }) }),
-        thresholds: healthy,
-    }),
+    smoke: () => {
+        const rate = num('RATE', 50);
+        const duration = env('DURATION', '30s');
+        return {
+            description: `${duration} at ${rate} req/s of mixed traffic, strict thresholds`,
+            mix: 'realistic',
+            scenarios: (mix) => ({ smoke: constantRate({ rate, duration, mix }) }),
+            thresholds: healthy,
+        };
+    },
 
     // demo — 3 минуты, после которых на дашбордах есть всё: прогрев кэша,
     // стабильная нагрузка, короткий спайк с saturation и восстановление.
