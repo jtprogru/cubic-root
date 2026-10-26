@@ -1,6 +1,6 @@
 // Профили нагрузки: форма (executor k6 и его стадии), смесь трафика по
 // умолчанию и пороги. Параметры переопределяются переменными окружения:
-// RATE, DURATION, VUS, SPIKE_RATE, PERIOD, MAX_VUS, MIX.
+// RATE, DURATION, VUS, THINK_TIME, SPIKE_RATE, PERIOD, STEP, MAX_RATE, MAX_VUS, MIX.
 //
 // Большинство профилей — открытая модель (arrival-rate): k6 запускает RATE
 // запросов в секунду независимо от того, как быстро отвечает сервис. В
@@ -32,6 +32,24 @@ export function seconds(duration) {
 }
 
 const s = (sec) => `${Math.round(sec)}s`;
+
+// planned возвращает, сколько итераций arrival-rate сценарий должен запустить
+// по плану: площадь под графиком RPS. У закрытой модели плана нет, там null.
+export function planned(scenario) {
+    if (scenario.executor === 'constant-arrival-rate') {
+        return scenario.rate * seconds(scenario.duration);
+    }
+    if (scenario.executor === 'ramping-arrival-rate') {
+        let rate = scenario.startRate;
+        let total = 0;
+        for (const stage of scenario.stages) {
+            total += ((rate + stage.target) / 2) * seconds(stage.duration);
+            rate = stage.target;
+        }
+        return total;
+    }
+    return null;
+}
 
 function constantRate({ rate, duration, mix, startTime = '0s' }) {
     return {
@@ -94,12 +112,16 @@ const healthy = {
 export const PROFILES = {
     // smoke — 30 секунд лёгкого смешанного трафика: сервис жив, мониторинг
     // видит все виды запросов, пороги строгие.
-    smoke: () => ({
-        description: '30s at 50 req/s of mixed traffic, strict thresholds',
-        mix: 'realistic',
-        scenarios: (mix) => ({ smoke: constantRate({ rate: num('RATE', 50), duration: env('DURATION', '30s'), mix }) }),
-        thresholds: healthy,
-    }),
+    smoke: () => {
+        const rate = num('RATE', 50);
+        const duration = env('DURATION', '30s');
+        return {
+            description: `${duration} at ${rate} req/s of mixed traffic, strict thresholds`,
+            mix: 'realistic',
+            scenarios: (mix) => ({ smoke: constantRate({ rate, duration, mix }) }),
+            thresholds: healthy,
+        };
+    },
 
     // demo — 3 минуты, после которых на дашбордах есть всё: прогрев кэша,
     // стабильная нагрузка, короткий спайк с saturation и восстановление.
@@ -263,12 +285,21 @@ export const PROFILES = {
     // и толпа пользователей в закрытой модели, плюс постоянные струйки
     // невалидных запросов и экзотических входов. Пороги по сценариям показывают,
     // как спайки и толпа задевают фоновый трафик.
+    //
+    // Всё, кроме струек, масштабируется от RATE: stress до RATE×3, спайки до
+    // RATE×6, толпа около RATE×3 req/s. Поэтому один RATE двигает весь марафон,
+    // и stand run поднимает его по циклам, пока окружение не перестанет
+    // справляться (RATE_STEP в deploy/stand.sh).
     marathon: () => {
         const rate = num('RATE', 1000);
         const peak = num('SPIKE_RATE', rate * 6);
-        const vus = num('VUS', 3000);
+        // Толпа — RATE×3 пользователей с паузой в секунду. Каждый VU стоит k6
+        // около мегабайта памяти, поэтому пользователей не больше MAX_VUS, а пауза
+        // сокращается так, чтобы толпа давала те же RATE×3 req/s.
+        const vus = num('VUS', Math.min(rate * 3, MAX_VUS));
+        const think = num('THINK_TIME', vus / (rate * 3));
         return {
-            description: `1h: background ${rate} req/s + stress, spikes to ${peak} req/s and ${vus} closed-model users`,
+            description: `1h: background ${rate} req/s + stress, spikes to ${peak} req/s and ${vus} closed-model users thinking ${think.toFixed(2)}s`,
             mix: 'realistic',
             scenarios: (mix) => ({
                 background: constantRate({ rate, duration: '60m', mix }),
@@ -288,7 +319,7 @@ export const PROFILES = {
                     stages: waveStages({ base: 0, peak, total: 15 * 60, period: 180, spikeLen: 20 }),
                 }),
                 crowd: rampingVUs({
-                    mix, startTime: '40m', thinkTime: 1,
+                    mix, startTime: '40m', thinkTime: think,
                     stages: [
                         { duration: '3m', target: vus },
                         { duration: '8m', target: vus },

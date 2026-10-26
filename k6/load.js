@@ -12,9 +12,10 @@
 //   k6 run -e SCENARIO=demo k6/load.js
 //   k6 run -e SCENARIO=spike -e MIX=hot-keys -e SPIKE_RATE=20000 k6/load.js
 //   k6 run -e SCENARIO=soak -e RATE=2000 -e DURATION=2h k6/load.js
+//   k6 run -e SCENARIO=marathon -e RATE=3000 -e FAST=1 k6/load.js
 import { sleep } from 'k6';
 import { MIXES, send } from './lib/traffic.js';
-import { PROFILES } from './lib/profiles.js';
+import { PROFILES, planned } from './lib/profiles.js';
 import { textSummary } from './lib/summary.js';
 
 const NAME = __ENV.SCENARIO || 'baseline';
@@ -28,10 +29,38 @@ if (!MIXES[MIX]) {
     throw new Error(`unknown MIX=${MIX}, expected one of: ${Object.keys(MIXES).join(', ')}`);
 }
 
+const scenarios = profile.scenarios(MIX);
+
+// План по каждому arrival-rate сценарию. Когда генератору не хватает CPU, k6
+// отстаёт от расписания и теряет итерации молча, dropped_iterations этого не
+// видит. Порог «запущено не меньше DELIVERED плана» ловит такой прогон: предел
+// в нём нашёлся у генератора, а не у сервиса. Профили, которые сами
+// останавливаются по порогу (breakpoint), план заведомо не выполняют.
+const DELIVERED = 0.98;
+const aborts = Object.values(profile.thresholds).flat().some((t) => t.abortOnFail);
+const plan = {};
+if (!aborts) {
+    for (const [name, scenario] of Object.entries(scenarios)) {
+        const n = planned(scenario);
+        if (n) {
+            plan[name] = Math.round(n);
+        }
+    }
+}
+const delivery = Object.fromEntries(
+    Object.entries(plan).map(([name, n]) => [`iterations{scenario:${name}}`, [`count>=${Math.floor(n * DELIVERED)}`]]),
+);
+
+// FAST=1 — быстрый режим для любого профиля: тела ответов не читаются,
+// проверяется только статус. Запрос стоит генератору меньше CPU, но
+// правильность результатов не проверяется.
+const FAST = ['1', 'true'].includes(__ENV.FAST);
+
 export const options = {
     ...(profile.options || {}),
-    scenarios: profile.scenarios(MIX),
-    thresholds: profile.thresholds,
+    ...(FAST ? { discardResponseBodies: true } : {}),
+    scenarios,
+    thresholds: { ...profile.thresholds, ...delivery },
     // По умолчанию k6 не считает p(99), а итоговая сводка его выводит.
     summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
@@ -49,5 +78,10 @@ export function user() {
 }
 
 export function handleSummary(data) {
-    return { stdout: textSummary(data, NAME, profile.description, MIX) };
+    return {
+        stdout: textSummary(data, {
+            profile: NAME, description: profile.description, mix: MIX, plan,
+            statusOnly: Boolean(options.discardResponseBodies),
+        }),
+    };
 }

@@ -9,10 +9,14 @@ K6_RW_URL ?= http://localhost:8428/api/v1/write
 K6_TESTID ?= $(SCENARIO)-$(shell date +%Y%m%d-%H%M%S)
 K6_ENV     = K6_PROMETHEUS_RW_SERVER_URL=$(K6_RW_URL) K6_PROMETHEUS_RW_PUSH_INTERVAL=5s \
 	K6_PROMETHEUS_RW_TREND_STATS='p(50),p(95),p(99),max'
-# Profile parameters are forwarded only when set, e.g. make test-load SCENARIO=soak RATE=2000 DURATION=2h
-K6_PARAMS  = MIX RATE DURATION VUS SPIKE_RATE PERIOD STEP MAX_RATE MAX_VUS
+# Profile parameters are forwarded only when set, e.g. make test-load SCENARIO=soak RATE=2000 DURATION=2h.
+# FAST=1 reads no response bodies and checks only statuses: k6 spends less CPU per request.
+K6_PARAMS  = MIX RATE DURATION VUS THINK_TIME SPIKE_RATE PERIOD STEP MAX_RATE MAX_VUS FAST
+# Extra k6 flags, e.g. K6_ARGS=--quiet for unattended runs: without a terminal k6
+# prints a progress line per scenario every second.
+K6_ARGS   ?=
 K6_FLAGS   = --env BASE_URL=$(BASE_URL) --env SCENARIO=$(SCENARIO) --tag testid=$(K6_TESTID) \
-	$(foreach p,$(K6_PARAMS),$(if $($(p)),--env $(p)=$($(p)))) $(if $(K6_OUT),--out $(K6_OUT))
+	$(foreach p,$(K6_PARAMS),$(if $($(p)),--env $(p)=$($(p)))) $(if $(K6_OUT),--out $(K6_OUT)) $(K6_ARGS)
 
 # Images used to validate observability configs; keep in sync with compose.yaml.
 VM_VERSION   ?= v1.154.0
